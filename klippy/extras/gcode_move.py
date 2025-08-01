@@ -191,8 +191,10 @@ class GCodeMove:
             gcmd.respond_raw("X:%.3f Y:%.3f Z:%.3f E:%.3f" % tuple(p))
         else:
             toolhead = self.printer.lookup_object('toolhead')
-            axes = ["X","Y","Z"]+[x.get_axis_gcode_id() for x in toolhead.get_extra_axes() if x is not None] 
-            gcmd.respond_raw(" ".join(["%s:%.3f"%(k,v) for k, v in zip(axes,p)]))
+            axes = ["X","Y","Z"]+[ x.get_axis_gcode_id()
+                for x in toolhead.get_extra_axes() if x is not None]
+            s=" ".join(["%s:%.3f"%(k,v) for k, v in zip(axes,p)])
+            gcmd.respond_raw(s)
     def cmd_M220(self, gcmd):
         # Set speed factor override percentage
         value = gcmd.get_float('S', 100., above=0.) / (60. * 100.)
