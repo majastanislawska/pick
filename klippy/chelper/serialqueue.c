@@ -12,7 +12,9 @@
 // clock times, prioritizes commands, and handles retransmissions.  A
 // background thread is launched to do this work and minimize latency.
 
+#if defined(__linux__)
 #include <linux/can.h> // // struct can_frame
+#endif
 #include <math.h> // fabs
 #include <pthread.h> // pthread_mutex_lock
 #include <stddef.h> // offsetof
@@ -28,6 +30,14 @@
 #include "pollreactor.h" // pollreactor_alloc
 #include "pyhelper.h" // get_monotonic
 #include "serialqueue.h" // struct queue_message
+#if defined(__APPLE__) && defined(__MACH__)
+typedef uint32_t canid_t;
+struct can_frame {
+        canid_t can_id;  /* 32 bit CAN_ID + EFF/RTR/ERR flags */
+        uint8_t    can_dlc; /* data length code: 0 .. 8 */
+        uint8_t    data[8] __attribute__((aligned(8)));
+};
+#endif
 
 struct command_queue {
     struct list_head upcoming_queue, ready_queue;
