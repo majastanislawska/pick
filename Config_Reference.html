@@ -1740,7 +1740,14 @@
     Board specific hardware support
   </a>
   
-    <nav class="md-nav" aria-label="Board specific hardware support">
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#pca9685-pwm-controller" class="md-nav__link">
+    PCA9685 PWM Controller
+  </a>
+  
+    <nav class="md-nav" aria-label="PCA9685 PWM Controller">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
@@ -3890,7 +3897,14 @@
     Board specific hardware support
   </a>
   
-    <nav class="md-nav" aria-label="Board specific hardware support">
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#pca9685-pwm-controller" class="md-nav__link">
+    PCA9685 PWM Controller
+  </a>
+  
+    <nav class="md-nav" aria-label="PCA9685 PWM Controller">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
@@ -8751,6 +8765,29 @@ sensor_type:
 </code></pre></div>
 
 <h2 id="board-specific-hardware-support">Board specific hardware support<a class="headerlink" href="#board-specific-hardware-support" title="Permanent link">&para;</a></h2>
+<h2 id="pca9685-pwm-controller">PCA9685 PWM Controller<a class="headerlink" href="#pca9685-pwm-controller" title="Permanent link">&para;</a></h2>
+<p>The <code>[pca9685]</code> module enables a PCA9685 16-channel PWM controller over I2C, providing 16 virtual PWM pins for use with <code>[servo]</code> and <code>[output_pin]</code> modules.
+This is useful for driving servos, LEDs, or other PWM devices like component feeders.
+I2C is slow so those pins shouldn't be used to run anything time critical like driving stepper motors.</p>
+<p>See the <a href="https://github.com/Klipper3d/klipper/blob/master/config/example-pca9685.cfg">example-pca9685.cfg</a>
+file for an example.</p>
+<div class="highlight"><pre><span></span><code>[pca9685 my_expander]
+i2c_address: 64
+# default  64 (0x40), range: 64-127 (0x40-0x7F) depending on addr pins.
+#i2c_mcu: mcu
+#i2c_bus: i2c1
+#   See the &quot;common I2C settings&quot; section for a description of the
+#   above parameters.
+#frequency: 50.0
+#   PWM frequency in Hz (default: 50.0, range: 1.0-1000.0).
+#    Use `50` for standard servos.
+#invert_output: False
+#   Boolean (default: `False`). Sets MODE2 INVRT bit
+#   to invert all PWM outputs globally in hardware.
+#totem_pole: True
+#   Boolean (default: `True`). Sets MODE2 OUTDRV bit for totem-pole output; if `False`, uses open-drain.
+</code></pre></div>
+
 <h3 id="sx1509">[sx1509]<a class="headerlink" href="#sx1509" title="Permanent link">&para;</a></h3>
 <p>Configure an SX1509 I2C to GPIO expander. Due to the delay incurred by
 I2C communication you should NOT use SX1509 pins as stepper enable,
