@@ -10,8 +10,10 @@
 #include <stdio.h> // fprintf
 #include <string.h> // strerror
 #include <time.h> // struct timespec
+#if defined(__linux)
 #include <linux/prctl.h>  // PR_SET_NAME
 #include <sys/prctl.h>  // prctl
+#endif
 #include "compiler.h" // __visible
 #include "pyhelper.h" // get_monotonic
 
@@ -96,8 +98,15 @@ dump_string(char *outbuf, int outbuf_size, char *inbuf, int inbuf_size)
 }
 
 // Set custom thread names
+#if defined(__APPLE__) && defined(__MACH__)
+int set_thread_name(char name[16])
+{
+    return 0;
+}
+#else
 int __visible
 set_thread_name(char name[16])
 {
     return prctl(PR_SET_NAME, name);
 }
+#endif
