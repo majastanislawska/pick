@@ -62,23 +62,23 @@ class PCA9685Controller:
 
     def _init_pca9685(self):
         # Full reset: MODE1 = 0x01 (ALLCALL, no SLEEP, restart enabled)
-        self._i2c.i2c_write_wait_ack([0x00, 0x01])
+        self._i2c.i2c_write([0x00, 0x01])
         self._reactor.pause(self._reactor.monotonic() + .01)
         # Set frequency
         prescale = round(25000000.0 / (4096.0 * self._frequency)) - 1
         if prescale < 3 or prescale > 255:
             raise self._printer.config_error(
                 "PCA9685 %s: Frequency out of range"%(self.name,))
-        self._i2c.i2c_write_wait_ack([0x00, 0x10])
-        self._i2c.i2c_write_wait_ack([0xFE, prescale])
-        self._i2c.i2c_write_wait_ack([0x00, 0xA1])
+        self._i2c.i2c_write([0x00, 0x10])
+        self._i2c.i2c_write([0xFE, prescale])
+        self._i2c.i2c_write([0x00, 0xA1])
         # Set MODE2: INVRT and OUTDRV from config
         mode2_value = 0
         if self._invert_output:
             mode2_value |= 0x10  # INVRT=1
         if self._totem_pole:
             mode2_value |= 0x04  # OUTDRV=1
-        self._i2c.i2c_write_wait_ack([0x01, mode2_value])
+        self._i2c.i2c_write([0x01, mode2_value])
         self._reactor.pause(self._reactor.monotonic() + .01)
         logging.info("PCA9685 %s: Initialized with frequency %s Hz"%(
             self.name,self._frequency))
