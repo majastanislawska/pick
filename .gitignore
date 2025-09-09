@@ -3,5 +3,7 @@ out
 *.pyc
 .config
 .config.old
+.DS_Store
 klippy/.version
 klippy/chelper/c_helper.so*
+klippy/chelper/_temp_c*
