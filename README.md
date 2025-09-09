@@ -1,17 +1,11 @@
-Welcome to the Klipper project!
+Welcome to the Pick (&#x1D745;&#x1D450;&#x1D458;) project!
 
-[![Klipper](docs/img/klipper-logo-small.png)](https://www.klipper3d.org/)
+Pick (&#x1D745;&#x1D450;&#x1D458;) is a spinoff of [Klipper](https://www.klipper3d.org/) that focuses on Pick and Place machines.
 
-https://www.klipper3d.org/
+That is:
+ * support for extra axes (working M114)
+ * central endstop (todo)
+ * support for pumps, valves, and pressuure sensors, not just by reusing feaures related to hotend/hotbed temperature (todo)
+ * feeders control (servo for now)
 
-The Klipper firmware controls 3d-Printers. It combines the power of a
-general purpose computer with one or more micro-controllers. See the
-[features document](https://www.klipper3d.org/Features.html) for more
-information on why you should use the Klipper software.
-
-Start by [installing Klipper software](https://www.klipper3d.org/Installation.html).
-
-Klipper software is Free Software. See the [license](COPYING) or read
-the [documentation](https://www.klipper3d.org/Overview.html). We
-depend on the generous support from our
-[sponsors](https://www.klipper3d.org/Sponsors.html).
+more to come.
