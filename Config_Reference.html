@@ -1736,18 +1736,38 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#board-specific-hardware-support" class="md-nav__link">
-    Board specific hardware support
+  <a href="#pca9685-pwm-controller" class="md-nav__link">
+    PCA9685 PWM Controller
   </a>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#pca9685-pwm-controller" class="md-nav__link">
-    PCA9685 PWM Controller
+  <a href="#ch224q-power-delivery" class="md-nav__link">
+    CH224Q Power Delivery
   </a>
   
-    <nav class="md-nav" aria-label="PCA9685 PWM Controller">
+    <nav class="md-nav" aria-label="CH224Q Power Delivery">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#ch224q_pd-mcu" class="md-nav__link">
+    [ch224q_pd mcu]
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#board-specific-hardware-support" class="md-nav__link">
+    Board specific hardware support
+  </a>
+  
+    <nav class="md-nav" aria-label="Board specific hardware support">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
@@ -3893,18 +3913,38 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#board-specific-hardware-support" class="md-nav__link">
-    Board specific hardware support
+  <a href="#pca9685-pwm-controller" class="md-nav__link">
+    PCA9685 PWM Controller
   </a>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#pca9685-pwm-controller" class="md-nav__link">
-    PCA9685 PWM Controller
+  <a href="#ch224q-power-delivery" class="md-nav__link">
+    CH224Q Power Delivery
   </a>
   
-    <nav class="md-nav" aria-label="PCA9685 PWM Controller">
+    <nav class="md-nav" aria-label="CH224Q Power Delivery">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#ch224q_pd-mcu" class="md-nav__link">
+    [ch224q_pd mcu]
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#board-specific-hardware-support" class="md-nav__link">
+    Board specific hardware support
+  </a>
+  
+    <nav class="md-nav" aria-label="Board specific hardware support">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
@@ -8761,7 +8801,6 @@ sensor_type:
 #   See the &quot;[probe]&quot; section for a description of the above parameters.
 </code></pre></div>
 
-<h2 id="board-specific-hardware-support">Board specific hardware support<a class="headerlink" href="#board-specific-hardware-support" title="Permanent link">&para;</a></h2>
 <h2 id="pca9685-pwm-controller">PCA9685 PWM Controller<a class="headerlink" href="#pca9685-pwm-controller" title="Permanent link">&para;</a></h2>
 <p>The <code>[pca9685]</code> module enables a PCA9685 16-channel PWM controller over I2C, providing 16 virtual PWM pins for use with <code>[servo]</code> and <code>[output_pin]</code> modules.
 This is useful for driving servos, LEDs, or other PWM devices like component feeders.
@@ -8785,6 +8824,21 @@ i2c_address: 64
 #   Boolean (default: `True`). Sets MODE2 OUTDRV bit for totem-pole output; if `False`, uses open-drain.
 </code></pre></div>
 
+<h2 id="ch224q-power-delivery">CH224Q Power Delivery<a class="headerlink" href="#ch224q-power-delivery" title="Permanent link">&para;</a></h2>
+<h3 id="ch224q_pd-mcu">[ch224q_pd mcu]<a class="headerlink" href="#ch224q_pd-mcu" title="Permanent link">&para;</a></h3>
+<p>Configures CH224Q Power Delivery controller, 
+section name may be arbitrary, but for consistency it's good to name it after mcu it's hooked to: you only need one per controller board anyway. 
+gcode commands use parameter MCU= for same reason.</p>
+<div class="highlight"><pre><span></span><code>[ch224q_pd toolhead]
+#   only options allowed here are &quot;common I2C settings&quot;
+#   really required are just those:
+#i2c_mcu: toolhead
+#i2c_bus: i2c1e
+#   See the &quot;common I2C settings&quot; section for a description of the
+#   parameters.
+</code></pre></div>
+
+<h2 id="board-specific-hardware-support">Board specific hardware support<a class="headerlink" href="#board-specific-hardware-support" title="Permanent link">&para;</a></h2>
 <h3 id="sx1509">[sx1509]<a class="headerlink" href="#sx1509" title="Permanent link">&para;</a></h3>
 <p>Configure an SX1509 I2C to GPIO expander. Due to the delay incurred by
 I2C communication you should NOT use SX1509 pins as stepper enable,

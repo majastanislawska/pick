@@ -2555,6 +2555,40 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#ch224q_pd" class="md-nav__link">
+    [ch224q_pd]
+  </a>
+  
+    <nav class="md-nav" aria-label="[ch224q_pd]">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#pd_set" class="md-nav__link">
+    PD_SET
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#pd_get" class="md-nav__link">
+    PD_GET
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#pd_caps" class="md-nav__link">
+    PD_CAPS
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -4892,6 +4926,40 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#ch224q_pd" class="md-nav__link">
+    [ch224q_pd]
+  </a>
+  
+    <nav class="md-nav" aria-label="[ch224q_pd]">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#pd_set" class="md-nav__link">
+    PD_SET
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#pd_get" class="md-nav__link">
+    PD_GET
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#pd_caps" class="md-nav__link">
+    PD_CAPS
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -6337,6 +6405,20 @@ independent adjustments to each Z stepper to compensate for tilt. See
 the PROBE command for details on the optional probe parameters. The
 optional <code>RETRIES</code>, <code>RETRY_TOLERANCE</code>, and <code>HORIZONTAL_MOVE_Z</code> values
 override those options specified in the config file.</p>
+<h3 id="ch224q_pd">[ch224q_pd]<a class="headerlink" href="#ch224q_pd" title="Permanent link">&para;</a></h3>
+<p>The following commands are available when the
+<a href="Config_Reference.html#ch224q_pd">ch224q_pd config section</a> is enabled.</p>
+<h4 id="pd_set">PD_SET<a class="headerlink" href="#pd_set" title="Permanent link">&para;</a></h4>
+<p><code>PD_SET [MCU=&lt;name&gt;] VOLTAGE=&lt;value&gt; [MODE=[FIXED|PPS|AVS]]</code> Sets the PD voltage for the specified MCU (config section name), can be ommited if there's just one
+<code>VOLTAGE</code>: Voltage in volts (e.g., 5, 9, 12, 15, 20, 28 for <code>FIXED</code>; 3.3-21.0 for PPS/AVS).
+<code>MODE</code>: <code>FIXED</code> (default), <code>PPS</code>, or <code>AVS</code>. Errors if VOLTAGE or MODE is invalid or AVS unsupported.</p>
+<h4 id="pd_get">PD_GET<a class="headerlink" href="#pd_get" title="Permanent link">&para;</a></h4>
+<p><code>PD_GET [MCU=&lt;name&gt;]</code> Returns PD status as a single line of space separated key:value format, voltage current protocols epr_support avs_support power_good
+power_good is hypotetised meaqning of bit7 of status register which is 'reserved' according to datasheet.
+when power supply is uncapable of power delivery, voltage will show 'prefered' value as configuted by resistor on cfg1 pin, protocols will show none, power_good 'no' and current bogus value
+in case of using PD_SET with voltage not supported by charger, voltage will show last requested voltage, protocols will list supported protocols, power_good 'no' and current bogus value.</p>
+<h4 id="pd_caps">PD_CAPS<a class="headerlink" href="#pd_caps" title="Permanent link">&para;</a></h4>
+<p><code>PD_CAPS [MCU=&lt;name&gt;]</code> Dumps PD Source Capabilities: header and power profiles (PDOs) (fixed, PPS, or AVS). </p>
 
               
             </article>
