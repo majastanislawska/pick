@@ -1694,4 +1694,4 @@ when power supply is uncapable of power delivery, voltage will show 'prefered' v
 in case of using PD_SET with voltage not supported by charger, voltage will show last requested voltage, protocols will list supported protocols, power_good 'no' and current bogus value.
 
 #### PD_CAPS
-`PD_CAPS [MCU=<name>]` Dumps PD Source Capabilities: header and power profiles (PDOs) (fixed, PPS, or AVS). 
+`PD_CAPS [MCU=<name>]` Dumps PD Source Capabilities: header and power profiles (PDOs) (fixed, PPS, or AVS).

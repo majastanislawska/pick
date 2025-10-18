@@ -5231,12 +5231,12 @@ i2c_address: 64
 #   Boolean (default: `True`). Sets MODE2 OUTDRV bit for totem-pole output; if `False`, uses open-drain.
 ```
 
-## CH224Q Power Delivery 
+## CH224Q Power Delivery
 
 ### [ch224q_pd mcu]
 
-Configures CH224Q Power Delivery controller, 
-section name may be arbitrary, but for consistency it's good to name it after mcu it's hooked to: you only need one per controller board anyway. 
+Configures CH224Q Power Delivery controller,
+section name may be arbitrary, but for consistency it's good to name it after mcu it's hooked to: you only need one per controller board anyway.
 gcode commands use parameter MCU= for same reason.
 
 ```

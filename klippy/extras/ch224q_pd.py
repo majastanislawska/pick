@@ -1,12 +1,16 @@
 # klippy/extras/ch224q_pd.py
+# CH224Q uSB Power Delivery Controller support for Klipper (I2C)
+#
+# Copyright (C) 2025 Maja Stanislawska <maja@makershop.ie>
+#
+# This file may be distributed under the terms of the GNU GPLv3 license.
 import logging
-
 from . import bus
 
 # Registers from CH224Q V2.0 datasheet (§5.2.3)
 REG_STATUS = 0x09              # 8-bit status (read-only)
 REG_VOLT_REQ = 0x0A            # 8-bit voltage code
-REG_CURR_MAX = 0x50            # Current max (read-only, 16-bit, 50mA, little-endian)
+REG_CURR_MAX = 0x50            # Current max (read-only, 50mA)
 REG_AVS_HIGH = 0x51            # AVS high 8 bits
 REG_AVS_LOW = 0x52             # AVS low 8 bits
 REG_PPS_VOLT = 0x53            # PPS voltage (100mV units, 8-bit)
@@ -29,11 +33,12 @@ class CH224QPD:
             config, default_addr=0x22, default_speed=100000)
         gcode = config.get_printer().lookup_object('gcode')
         gcode.register_command('PD_SET', self.cmd_PD_SET,
-                              desc="Set PD voltage (e.g., PD_SET MCU=toolhead VOLTAGE=9 MODE=FIXED)")
+            desc="Set PD voltage (e.g., PD_SET MCU=toolhead "
+            "VOLTAGE=9 MODE=FIXED)")
         gcode.register_command('PD_GET', self.cmd_PD_GET,
-                              desc="Get PD status (e.g., PD_GET MCU=toolhead)")
+            desc="Get PD status (e.g., PD_GET MCU=toolhead)")
         gcode.register_command('PD_CAPS', self.cmd_PD_CAPS,
-                              desc="Dump PD SrcCap (e.g., PD_CAPS MCU=toolhead)")
+            desc="Dump PD SrcCap (e.g., PD_CAPS MCU=toolhead)")
 
     def _write_reg8(self, reg, value):
         self.i2c.i2c_write([reg, value & 0xFF])
@@ -63,12 +68,11 @@ class CH224QPD:
             return
         voltage = gcmd.get_float('VOLTAGE', 5.0) * 1000  # Volts to mV
         mode = gcmd.get('MODE', 'FIXED').upper()
-        
         if mode in ('AVS', 'PPS') and not (3300 <= voltage <= 21000):
             raise gcmd.error("VOLTAGE 3.3-21.0 V for AVS/PPS")
         elif mode == 'FIXED' and voltage not in VOLTAGE_CODES:
-            raise gcmd.error("VOLTAGE must be one of %s" % [v / 1000 for v in VOLTAGE_CODES.keys()])
-        
+            raise gcmd.error("VOLTAGE must be one of %s" % [
+                v/1000 for v in VOLTAGE_CODES.keys()])
         status = self._read_reg8(REG_STATUS)
         if mode == 'AVS' and not (status & 0x40):
             raise gcmd.error("AVS not supported")
@@ -96,10 +100,8 @@ class CH224QPD:
         epr_exist = "yes" if status & 0x20 else "no"
         avs_exist = "yes" if status & 0x40 else "no"
         power_good = "yes" if status & 0x80 else "no"
-        
         raw_curr = self._read_reg16(REG_CURR_MAX)
         max_curr_ma = raw_curr * 50 if status & 0x08 else 0
-        
         # Read voltage (0x0A first, then 0x53 or 0x51-0x52 if needed)
         voltage_mv = 0
         raw_volt = self._read_reg8(REG_VOLT_REQ)
@@ -117,9 +119,9 @@ class CH224QPD:
                     voltage_mv = v
                     break
         voltage = "%.1f" % (voltage_mv / 1000.0) if voltage_mv else "unknown"
-        
         gcmd.respond_raw(
-            "voltage:%s current:%.1f protocols:%s epr_support:%s avs_support:%s power_good:%s" % (
+            "voltage:%s current:%.1f protocols:%s epr_support:%s "
+            "avs_support:%s power_good:%s" % (
                 voltage,
                 max_curr_ma / 1000.0,
                 ",".join(active_protocols) or "none",
@@ -134,7 +136,6 @@ class CH224QPD:
         if mcu != self.name:
             return
         data = self._read_src_cap()
-        
         if data and len(data) >= 2 and (self._read_reg8(REG_STATUS) & 0x08):
             # Parse 2-byte header (little-endian)
             header = (data[1] << 8) | data[0]
@@ -157,14 +158,14 @@ class CH224QPD:
                 "  Ext: %d" % (
                     msg_type,
                     "Sink" if pd_role else "Source",
-                    ["1.0", "2.0", "3.0"][spec_rev] if spec_rev <= 2 else "Unknown",
+                    ["1.0", "2.0", "3.0"][spec_rev] if spec_rev <= 2
+                        else "Unknown",
                     "Sink" if pr_role else "Source",
                     msg_id,
                     num_do,
                     ext
                 )
             )
-            
             offset = 2 if ext == 0 else 4
             if ext == 1 and len(data) >= 4:
                 ext_header = (data[3] << 8) | data[2]
@@ -185,15 +186,15 @@ class CH224QPD:
                         (ext_header >> 9) & 0x01
                     )
                 )
-            
             # Parse PDOs
             pdo_list = []
             for i in range(min(num_do, 7)):
                 idx = offset + i * 4
                 if idx + 3 >= len(data):
-                    report += "\nWarning: Incomplete PDO data at offset %d" % idx
+                    report += "\nWarning: Incomplete PDO at offset %d" % idx
                     break
-                pdo = (data[idx+3] << 24) | (data[idx+2] << 16) | (data[idx+1] << 8) | data[idx]
+                pdo = (data[idx+3] << 24) | (data[idx+2] << 16
+                      ) | (data[idx+1] << 8) | data[idx]
                 fixed_supply = (pdo >> 30) & 0x03
                 if fixed_supply != 0b11:  # Fixed PDO
                     max_current = (pdo & 0x3FF) * 10
@@ -207,8 +208,9 @@ class CH224QPD:
                     usb_suspend = (pdo >> 28) & 0x01
                     dual_role_pwr = (pdo >> 29) & 0x01
                     pdo_str = (
-                        "PDO%d: %.1fV, %.1fA, PeakCurrent=%d, EPRModeCap=%d, Unchunked=%d, "
-                        "DualRoleData=%d, USBComCap=%d, UnconstrainedPWR=%d, USBSuspend=%d, "
+                        "PDO%d: %.1fV, %.1fA, PeakCurrent=%d, EPRModeCap=%d, "
+                        "Unchunked=%d, DualRoleData=%d, USBComCap=%d, "
+                        "UnconstrainedPWR=%d, USBSuspend=%d, "
                         "DualRolePWR=%d, FixedSupply=%d" % (
                             i + 1,
                             voltage / 1000.0,
@@ -233,7 +235,8 @@ class CH224QPD:
                         max_voltage = ((pdo >> 17) & 0xFF) * 100
                         pps_pwr_limited = (pdo >> 27) & 0x01
                         pdo_str = (
-                            "PDO%d: %.1f-%.1fV (PPS), %.1fA, PPSPWRLimited=%d, PPS=%d, APDO=%d" % (
+                            "PDO%d: %.1f-%.1fV (PPS), %.1fA, "
+                            "PPSPWRLimited=%d, PPS=%d, APDO=%d" % (
                                 i + 1,
                                 min_voltage / 1000.0,
                                 max_voltage / 1000.0,
@@ -248,8 +251,8 @@ class CH224QPD:
                         min_voltage = ((pdo >> 8) & 0xFF) * 100
                         max_voltage = ((pdo >> 17) & 0x1FF) * 100
                         peak_current = (pdo >> 26) & 0x03
-                        pdo_str = (
-                            "PDO%d: %.1f-%.1fV (AVS), PDP=%dW, PeakCurrent=%d, EPRAVS=%d, APDO=%d" % (
+                        pdo_str = ("PDO%d: %.1f-%.1fV (AVS), PDP=%dW, "
+                            "PeakCurrent=%d, EPRAVS=%d, APDO=%d" % (
                                 i + 1,
                                 min_voltage / 1000.0,
                                 max_voltage / 1000.0,
@@ -260,11 +263,13 @@ class CH224QPD:
                             )
                         )
                     else:
-                        pdo_str = "PDO%d: Invalid APDO (PPS=%d, APDO=%d)" % (i + 1, pps, apdo)
+                        pdo_str = "PDO%d: Invalid APDO (PPS=%d, APDO=%d)"%(
+                            i + 1, pps, apdo)
                 pdo_list.append(pdo_str)
             report += "\nPDOs: %d\n%s" % (len(pdo_list), "\n".join(pdo_list))
         else:
-            report = "PD/EPR SrcCap:\nPDOs: 0 (PD mode required or data invalid)"
+            report = "PD/EPR SrcCap:\n"
+            report +="PDOs: 0 (PD mode required or data invalid)"
         gcmd.respond_info(report)
 
 def load_config_prefix(config):
