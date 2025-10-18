@@ -7,7 +7,7 @@
 import logging
 from . import bus
 
-# Registers from CH224Q V2.0 datasheet (§5.2.3)
+# Registers from CH224Q V2.0 datasheet
 REG_STATUS = 0x09              # 8-bit status (read-only)
 REG_VOLT_REQ = 0x0A            # 8-bit voltage code
 REG_CURR_MAX = 0x50            # Current max (read-only, 50mA)
