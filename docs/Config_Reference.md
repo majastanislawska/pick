@@ -5205,8 +5205,6 @@ sensor_type:
 #   See the "[probe]" section for a description of the above parameters.
 ```
 
-## Board specific hardware support
-
 ## PCA9685 PWM Controller
 
 The `[pca9685]` module enables a PCA9685 16-channel PWM controller over I2C, providing 16 virtual PWM pins for use with `[servo]` and `[output_pin]` modules.
@@ -5232,6 +5230,26 @@ i2c_address: 64
 #totem_pole: True
 #   Boolean (default: `True`). Sets MODE2 OUTDRV bit for totem-pole output; if `False`, uses open-drain.
 ```
+
+## CH224Q Power Delivery 
+
+### [ch224q_pd mcu]
+
+Configures CH224Q Power Delivery controller, 
+section name may be arbitrary, but for consistency it's good to name it after mcu it's hooked to: you only need one per controller board anyway. 
+gcode commands use parameter MCU= for same reason.
+
+```
+[ch224q_pd toolhead]
+#   only options allowed here are "common I2C settings"
+#   really required are just those:
+#i2c_mcu: toolhead
+#i2c_bus: i2c1e
+#   See the "common I2C settings" section for a description of the
+#   parameters.
+```
+
+## Board specific hardware support
 
 ### [sx1509]
 

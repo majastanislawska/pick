@@ -1676,3 +1676,22 @@ independent adjustments to each Z stepper to compensate for tilt. See
 the PROBE command for details on the optional probe parameters. The
 optional `RETRIES`, `RETRY_TOLERANCE`, and `HORIZONTAL_MOVE_Z` values
 override those options specified in the config file.
+
+### [ch224q_pd]
+
+The following commands are available when the
+[ch224q_pd config section](Config_Reference.md#ch224q_pd) is enabled.
+
+#### PD_SET
+`PD_SET [MCU=<name>] VOLTAGE=<value> [MODE=[FIXED|PPS|AVS]]` Sets the PD voltage for the specified MCU (config section name), can be ommited if there's just one
+`VOLTAGE`: Voltage in volts (e.g., 5, 9, 12, 15, 20, 28 for `FIXED`; 3.3-21.0 for PPS/AVS).
+`MODE`: `FIXED` (default), `PPS`, or `AVS`. Errors if VOLTAGE or MODE is invalid or AVS unsupported.
+
+#### PD_GET
+`PD_GET [MCU=<name>]` Returns PD status as a single line of space separated key:value format, voltage current protocols epr_support avs_support power_good
+power_good is hypotetised meaqning of bit7 of status register which is 'reserved' according to datasheet.
+when power supply is uncapable of power delivery, voltage will show 'prefered' value as configuted by resistor on cfg1 pin, protocols will show none, power_good 'no' and current bogus value
+in case of using PD_SET with voltage not supported by charger, voltage will show last requested voltage, protocols will list supported protocols, power_good 'no' and current bogus value.
+
+#### PD_CAPS
+`PD_CAPS [MCU=<name>]` Dumps PD Source Capabilities: header and power profiles (PDOs) (fixed, PPS, or AVS). 
