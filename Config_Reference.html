@@ -4249,6 +4249,13 @@ position_max:
 #   better to use the default than to specify this parameter. The
 #   default is true if position_endstop is near position_max and false
 #   if near position_min.
+#homing_center:
+#   If true, homing will cause the stepper to move in a positive
+#   direction if endstop is in triggered state in current position
+#   and in negative direction if it&#39;s open,
+#   in either case will seek position where state of endstop changes.
+#   This option is mutually exclusive with homing_positive_dir
+#   seting both will cause config error
 </code></pre></div>
 
 <h3 id="cartesian-kinematics">Cartesian Kinematics<a class="headerlink" href="#cartesian-kinematics" title="Permanent link">&para;</a></h3>
