@@ -105,9 +105,9 @@ class GCodeMove:
             'extrude_factor': self.extrude_factor,
             'absolute_coordinates': self.absolute_coord,
             'absolute_extrude': self.absolute_extrude,
-            'homing_origin': self.Coord(*self.homing_position[:4]),
-            'position': self.Coord(*self.last_position[:4]),
-            'gcode_position': self.Coord(*move_position[:4]),
+            'homing_origin': self.Coord(*self.homing_position),
+            'position': self.Coord(*self.last_position),
+            'gcode_position': self.Coord(*move_position),
         }
     def reset_last_position(self):
         if self.is_printer_ready:
@@ -176,14 +176,17 @@ class GCodeMove:
         self.absolute_coord = False
     def cmd_G92(self, gcmd):
         # Set position
-        offsets = [ gcmd.get_float(a, None) for a in 'XYZE' ]
+        toolhead = self.printer.lookup_object('toolhead')
+        axes = ["X","Y","Z"]+[ x.get_axis_gcode_id()
+                for x in toolhead.get_extra_axes() if x is not None]
+        offsets = [ gcmd.get_float(a, None) for a in axes ]
         for i, offset in enumerate(offsets):
             if offset is not None:
                 if i == 3:
                     offset *= self.extrude_factor
                 self.base_position[i] = self.last_position[i] - offset
-        if offsets == [None, None, None, None]:
-            self.base_position[:4] = self.last_position[:4]
+        if offsets == [None for x in axes]:
+            self.base_position = self.last_position
     def cmd_M114(self, gcmd):
         # Get Current Position
         p = self._get_gcode_position()
@@ -209,8 +212,11 @@ class GCodeMove:
         self.extrude_factor = new_extrude_factor
     cmd_SET_GCODE_OFFSET_help = "Set a virtual offset to g-code positions"
     def cmd_SET_GCODE_OFFSET(self, gcmd):
-        move_delta = [0., 0., 0., 0.]
-        for pos, axis in enumerate('XYZE'):
+        toolhead = self.printer.lookup_object('toolhead')
+        axes = ["X","Y","Z"]+[ x.get_axis_gcode_id()
+                for x in toolhead.get_extra_axes() if x is not None]
+        move_delta = [0. for i in axes]
+        for pos, axis in enumerate(axes):
             offset = gcmd.get_float(axis, None)
             if offset is None:
                 offset = gcmd.get_float(axis + '_ADJUST', None)
@@ -248,7 +254,7 @@ class GCodeMove:
         # Restore state
         self.absolute_coord = state['absolute_coord']
         self.absolute_extrude = state['absolute_extrude']
-        self.base_position[:4] = state['base_position'][:4]
+        self.base_position = state['base_position']
         self.homing_position = list(state['homing_position'])
         self.speed = state['speed']
         self.speed_factor = state['speed_factor']
@@ -265,24 +271,28 @@ class GCodeMove:
         "Return information on the current location of the toolhead")
     def cmd_GET_POSITION(self, gcmd):
         toolhead = self.printer.lookup_object('toolhead', None)
+        #toolhead = self.printer.lookup_object('toolhead')
+        axes = ["X","Y","Z"]+[ x.get_axis_gcode_id()
+                for x in toolhead.get_extra_axes() if x is not None]
+        manual_steppers=[x.rail for x in toolhead.get_extra_axes() if hasattr(x, 'rail')]
         if toolhead is None:
             raise gcmd.error("Printer not ready")
         kin = toolhead.get_kinematics()
-        steppers = kin.get_steppers()
+        steppers = kin.get_steppers() + manual_steppers
         mcu_pos = " ".join(["%s:%d" % (s.get_name(), s.get_mcu_position())
                             for s in steppers])
         cinfo = [(s.get_name(), s.get_commanded_position()) for s in steppers]
         stepper_pos = " ".join(["%s:%.6f" % (a, v) for a, v in cinfo])
-        kinfo = zip("XYZ", kin.calc_position(dict(cinfo)))
+        kinfo = zip(axes, kin.calc_position(dict(cinfo)))
         kin_pos = " ".join(["%s:%.6f" % (a, v) for a, v in kinfo])
         toolhead_pos = " ".join(["%s:%.6f" % (a, v) for a, v in zip(
-            "XYZE", toolhead.get_position()[:4])])
+            axes, toolhead.get_position())])
         gcode_pos = " ".join(["%s:%.6f"  % (a, v)
-                              for a, v in zip("XYZE", self.last_position)])
+                              for a, v in zip(axes, self.last_position)])
         base_pos = " ".join(["%s:%.6f"  % (a, v)
-                             for a, v in zip("XYZE", self.base_position)])
+                             for a, v in zip(axes, self.base_position)])
         homing_pos = " ".join(["%s:%.6f"  % (a, v)
-                               for a, v in zip("XYZ", self.homing_position)])
+                               for a, v in zip(axes, self.homing_position)])
         gcmd.respond_info("mcu: %s\n"
                           "stepper: %s\n"
                           "kinematic: %s\n"
