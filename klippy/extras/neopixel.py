@@ -25,6 +25,8 @@ class PrinterNeoPixel:
         self.pin = pin_params['pin']
         self.mcu.register_config_callback(self.build_config)
         self.neopixel_update_cmd = self.neopixel_send_cmd = None
+        self.brightness = float(config.getint('brightness', 255,
+                                    minval=1,maxval=255))
         # Build color map
         chain_count = config.getint('chain_count', 1, minval=1)
         color_order = config.getlist("color_order", ["GRB"])
@@ -63,7 +65,8 @@ class PrinterNeoPixel:
     def update_color_data(self, led_state):
         color_data = self.color_data
         for cdidx, (lidx, cidx) in self.color_map:
-            color_data[cdidx] = int(led_state[lidx][cidx] * 255. + .5)
+            color_data[cdidx] = int(led_state[lidx][cidx] *
+                                        self.brightness + .5)
     def send_data(self, print_time=None):
         old_data, new_data = self.old_color_data, self.color_data
         if new_data == old_data:

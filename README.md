@@ -74,3 +74,7 @@ i2c_bus: i2c1e
 ## Pneumatics
 
 in progress.
+
+## Miscelanous 
+
+* Overal brightness of Neopixel strip is configurable.
