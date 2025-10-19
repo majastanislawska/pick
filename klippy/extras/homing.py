@@ -197,8 +197,14 @@ class Homing:
         # Perform first home
         endstops = [es for rail in rails for es in rail.get_endstops()]
         hi = rails[0].get_homing_info()
+        triggered=True
+        if hi.positive_dir is None:  # Indicates homing_center=True
+            dir = endstops[0][0].query_endstop(
+                self.printer.lookup_object('toolhead').get_last_move_time())
+            logging.info("Homing.home_rails %s %s", dir,endstops[0][0])
+            triggered=False if dir else True
         hmove = HomingMove(self.printer, endstops)
-        hmove.homing_move(homepos, hi.speed)
+        hmove.homing_move(homepos, hi.speed,triggered=triggered)
         # Perform second home
         if hi.retract_dist:
             # Retract
@@ -215,7 +221,8 @@ class Homing:
                         for rp, ad in zip(retractpos, axes_d)]
             self.toolhead.set_position(startpos)
             hmove = HomingMove(self.printer, endstops)
-            hmove.homing_move(homepos, hi.second_homing_speed)
+            hmove.homing_move(homepos, hi.second_homing_speed,
+                              triggered=triggered)
             if hmove.check_no_movement() is not None:
                 raise self.printer.command_error(
                     "Endstop %s still triggered after retract"

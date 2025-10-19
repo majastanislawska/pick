@@ -54,7 +54,15 @@ class CoreXYKinematics:
             homepos = [None, None, None, None]
             homepos[axis] = hi.position_endstop
             forcepos = list(homepos)
-            if hi.positive_dir:
+            if hi.positive_dir is None:
+                endstop,name = rail.get_endstops()[0]
+                dir=endstop.query_endstop(
+                    rail.printer.lookup_object('toolhead').get_last_move_time())
+                if dir:
+                    forcepos[axis] -= (hi.position_endstop - position_min)
+                else:
+                    forcepos[axis] += (position_max - hi.position_endstop)
+            elif hi.positive_dir:
                 forcepos[axis] -= 1.5 * (hi.position_endstop - position_min)
             else:
                 forcepos[axis] += 1.5 * (position_max - hi.position_endstop)

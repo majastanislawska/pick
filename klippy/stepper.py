@@ -362,9 +362,10 @@ class GenericPrinterRail:
             'homing_retract_speed', self.homing_speed, above=0.)
         self.homing_retract_dist = config.getfloat(
             'homing_retract_dist', 5., minval=0.)
+        self.homing_center = config.getboolean('homing_center', False)
         self.homing_positive_dir = config.getboolean(
             'homing_positive_dir', None)
-        if self.homing_positive_dir is None:
+        if not self.homing_center and self.homing_positive_dir is None:
             axis_len = self.position_max - self.position_min
             if self.position_endstop <= self.position_min + axis_len / 4.:
                 self.homing_positive_dir = False
@@ -397,7 +398,8 @@ class GenericPrinterRail:
             'positive_dir', 'second_homing_speed'])(
                 self.homing_speed, self.position_endstop,
                 self.homing_retract_speed, self.homing_retract_dist,
-                self.homing_positive_dir, self.second_homing_speed)
+                None if self.homing_center else self.homing_positive_dir,
+                self.second_homing_speed)
         return homing_info
     def get_steppers(self):
         return list(self.steppers)
