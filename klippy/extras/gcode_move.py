@@ -274,7 +274,8 @@ class GCodeMove:
         #toolhead = self.printer.lookup_object('toolhead')
         axes = ["X","Y","Z"]+[ x.get_axis_gcode_id()
                 for x in toolhead.get_extra_axes() if x is not None]
-        manual_steppers=[x.rail for x in toolhead.get_extra_axes() if hasattr(x, 'rail')]
+        manual_steppers=[x.rail for x in toolhead.get_extra_axes()
+                         if hasattr(x, 'rail')]
         if toolhead is None:
             raise gcmd.error("Printer not ready")
         kin = toolhead.get_kinematics()
