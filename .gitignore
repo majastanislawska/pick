@@ -7,3 +7,4 @@ out
 klippy/.version
 klippy/chelper/c_helper.so*
 klippy/chelper/_temp_c*
+klippy/extras/led_effect.py
