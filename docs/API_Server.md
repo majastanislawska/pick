@@ -250,6 +250,24 @@ significant (eg, if a G-Code wait for temperature command is running).
 The JSON response message is sent when the processing of the script
 fully completes.
 
+### gcode/session
+
+This endpoint just like `gcode/script` allows one to run a series
+of G-Code commands.
+
+However, unlike like `gcode/script` if the G-Code command produces
+terminal output, that output is provided in the response.
+
+For example: `{"id": 123, "method": "gcode/session", "params": {"command": "M114"}}`
+might return `{"id":123,"result":{'output': ['X:0.000 Y:0.000 Z:0.000 E:0.000 A:0.000 B:0.000', 'ok']}}`
+
+Same considerations regrding queueing and delay as for `gcode/script` apply.
+
+No special distinction for error messages is done at response format,
+if you need just parse output like it would came from terminal.
+This endpoint is intened to help relaying traffic to OpenPNP over tcp,
+see wxPick apllication.
+
 ### gcode/restart
 
 This endpoint allows one to request a restart - it is similar to

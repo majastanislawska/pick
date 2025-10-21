@@ -75,6 +75,26 @@ i2c_bus: i2c1e
 
 in progress.
 
+## Webhooks
+
+### gcode/session
+
+This endpoint just like `gcode/script` allows one to run a series
+of G-Code commands.
+
+However, unlike like `gcode/script` if the G-Code command produces
+terminal output, that output is provided in the response.
+
+For example: `{"id": 123, "method": "gcode/session", "params": {"command": "M114"}}`
+might return `{"id":123,"result":{'output': ['X:0.000 Y:0.000 Z:0.000 E:0.000 A:0.000 B:0.000', 'ok']}}`
+
+No special distinction for error messages is done at response format,
+just parse output like it would came from terminal.
+
+Same considerations regrding queuing and delay as for `gcode/script` apply.
+
 ## Miscelanous 
 
 * Overal brightness of Neopixel strip is configurable.
+* Errors in gcode responses are more pronounced and easier to parse:
+`Error:` instead of `!!`

@@ -172,6 +172,8 @@ class GCodeDispatch:
         self.status_commands = commands
     def register_output_handler(self, cb):
         self.output_callbacks.append(cb)
+    def remove_output_handler(self, cb):
+        self.output_callbacks.remove(cb)
     def _handle_shutdown(self):
         if not self.is_printer_ready:
             return
@@ -210,6 +212,7 @@ class GCodeDispatch:
             handler = self.gcode_handlers.get(cmd, self.cmd_default)
             try:
                 handler(gcmd)
+                gcmd.ack()
             except self.error as e:
                 self._respond_error(str(e))
                 self.printer.send_event("gcode:command_error")
@@ -222,12 +225,15 @@ class GCodeDispatch:
                 self._respond_error(msg)
                 if not need_ack:
                     raise
-            gcmd.ack()
+#            gcmd.ack()
     def run_script_from_command(self, script):
         self._process_commands(script.split('\n'), need_ack=False)
     def run_script(self, script):
         with self.mutex:
             self._process_commands(script.split('\n'), need_ack=False)
+    def run_command(self, script):
+        with self.mutex:
+            self._process_commands(script.split('\n'), need_ack=True)
     def get_mutex(self):
         return self.mutex
     def create_gcode_command(self, command, commandline, params):
