@@ -246,7 +246,7 @@ class GCodeDispatch:
         lines = msg.strip().split('\n')
         if len(lines) > 1:
             self.respond_info("\n".join(lines), log=False)
-        self.respond_raw('!! %s' % (lines[0].strip(),))
+        self.respond_raw('Error: %s' % (lines[0].strip(),))
         if self.is_fileinput:
             self.printer.request_exit('error_exit')
     def _respond_state(self, state):
