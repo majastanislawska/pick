@@ -1128,6 +1128,13 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#gcodesession" class="md-nav__link">
+    gcode/session
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#gcoderestart" class="md-nav__link">
     gcode/restart
   </a>
@@ -1665,6 +1672,13 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#gcodesession" class="md-nav__link">
+    gcode/session
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#gcoderestart" class="md-nav__link">
     gcode/restart
   </a>
@@ -1978,6 +1992,18 @@ received, then the provided script will be queued. This delay could be
 significant (eg, if a G-Code wait for temperature command is running).
 The JSON response message is sent when the processing of the script
 fully completes.</p>
+<h3 id="gcodesession">gcode/session<a class="headerlink" href="#gcodesession" title="Permanent link">&para;</a></h3>
+<p>This endpoint just like <code>gcode/script</code> allows one to run a series
+of G-Code commands.</p>
+<p>However, unlike like <code>gcode/script</code> if the G-Code command produces
+terminal output, that output is provided in the response.</p>
+<p>For example: <code>{"id": 123, "method": "gcode/session", "params": {"command": "M114"}}</code>
+might return <code>{"id":123,"result":{'output': ['X:0.000 Y:0.000 Z:0.000 E:0.000 A:0.000 B:0.000', 'ok']}}</code></p>
+<p>Same considerations regrding queueing and delay as for <code>gcode/script</code> apply.</p>
+<p>No special distinction for error messages is done at response format,
+if you need just parse output like it would came from terminal.
+This endpoint is intened to help relaying traffic to OpenPNP over tcp,
+see wxPick apllication.</p>
 <h3 id="gcoderestart">gcode/restart<a class="headerlink" href="#gcoderestart" title="Permanent link">&para;</a></h3>
 <p>This endpoint allows one to request a restart - it is similar to
 running the G-Code "RESTART" command. For example:
