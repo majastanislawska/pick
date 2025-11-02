@@ -4,6 +4,7 @@
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
 import logging
+import gcode
 
 class GCodeMove:
     def __init__(self, config):
@@ -24,7 +25,7 @@ class GCodeMove:
                                        self._handle_home_rails_end)
         self.is_printer_ready = False
         # Register g-code commands
-        gcode = printer.lookup_object('gcode')
+        gcode_obj = printer.lookup_object('gcode')
         handlers = [
             'G1', 'G20', 'G21',
             'M82', 'M83', 'G90', 'G91', 'G92', 'M220', 'M221',
@@ -33,18 +34,18 @@ class GCodeMove:
         for cmd in handlers:
             func = getattr(self, 'cmd_' + cmd)
             desc = getattr(self, 'cmd_' + cmd + '_help', None)
-            gcode.register_command(cmd, func, False, desc)
-        gcode.register_command('G0', self.cmd_G1)
-        gcode.register_command('M114', self.cmd_M114, True)
-        gcode.register_command('GET_POSITION', self.cmd_GET_POSITION, True,
+            gcode_obj.register_command(cmd, func, False, desc)
+        gcode_obj.register_command('G0', self.cmd_G1)
+        gcode_obj.register_command('M114', self.cmd_M114, True)
+        gcode_obj.register_command('GET_POSITION', self.cmd_GET_POSITION, True,
                                desc=self.cmd_GET_POSITION_help)
-        self.Coord = gcode.Coord
+        #self.Coord = gcode.Coord
         # G-Code coordinate manipulation
         self.absolute_coord = self.absolute_extrude = True
-        self.base_position = [0.0, 0.0, 0.0, 0.0]
-        self.last_position = [0.0, 0.0, 0.0, 0.0]
-        self.homing_position = [0.0, 0.0, 0.0, 0.0]
-        self.axis_map = {'X':0, 'Y': 1, 'Z': 2, 'E': 3}
+        self.base_position = [0.0] * len(gcode.Coord._fields)
+        self.last_position = [0.0] * len(gcode.Coord._fields)
+        self.homing_position = [0.0] * len(gcode.Coord._fields)
+        # self.axis_map = {'X':0, 'Y': 1, 'Z': 2, 'E': 3}
         self.speed = 25.
         self.speed_factor = 1. / 60.
         self.extrude_factor = 1.
@@ -99,15 +100,18 @@ class GCodeMove:
         return self.speed_factor * 60.
     def get_status(self, eventtime=None):
         move_position = self._get_gcode_position()
+        logging.info("GcodeMove.get_status %s %s %s %s"%(
+            gcode.Coord,self.homing_position,self.last_position,move_position
+        ))
         return {
             'speed_factor': self._get_gcode_speed_override(),
             'speed': self._get_gcode_speed(),
             'extrude_factor': self.extrude_factor,
             'absolute_coordinates': self.absolute_coord,
             'absolute_extrude': self.absolute_extrude,
-            'homing_origin': self.Coord(*self.homing_position),
-            'position': self.Coord(*self.last_position),
-            'gcode_position': self.Coord(*move_position),
+            'homing_origin': gcode.Coord(*self.homing_position),
+            'position': gcode.Coord(*self.last_position),
+            'gcode_position': gcode.Coord(*move_position),
         }
     def reset_last_position(self):
         if self.is_printer_ready:
@@ -123,15 +127,16 @@ class GCodeMove:
             if gcode_id is None or gcode_id in axis_map or gcode_id in "FN":
                 continue
             axis_map[gcode_id] = index
-        self.axis_map = axis_map
+        gcode.axis_map = axis_map
         self.base_position[4:] = [0.] * (len(extra_axes) - 4)
+        self.homing_position[4:] = [0.] * (len(extra_axes) - 4)
         self.reset_last_position()
     # G-Code movement commands
     def cmd_G1(self, gcmd):
         # Move
         params = gcmd.get_command_parameters()
         try:
-            for axis, pos in self.axis_map.items():
+            for axis, pos in gcode.axis_map.items():
                 if axis in params:
                     v = float(params[axis])
                     absolute_coord = self.absolute_coord

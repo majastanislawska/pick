@@ -8,6 +8,7 @@ import os, re, logging, collections, shlex
 class CommandError(Exception):
     pass
 
+axis_map = {'X':0, 'Y': 1, 'Z': 2, 'E': 3}
 Coord = collections.namedtuple('Coord', ('x', 'y', 'z', 'e'))
 
 class GCodeCommand:
