@@ -482,7 +482,8 @@ class ToolHead:
         return self.extra_axes[0]
     def add_extra_axis(self, ea, axis_pos):
         logging.info("add_extra_axis1 %s %s %s %s %s"%(
-            ea.get_axis_gcode_id(), self.pos_axes, gcode.axis_map, axis_pos,self.Coord._fields))
+            ea.get_axis_gcode_id(), self.pos_axes,
+            gcode.axis_map, axis_pos,self.Coord._fields))
         self._flush_lookahead()
         self.extra_axes.append(ea)
         if not ea.get_axis_gcode_id() in self.pos_axes:
@@ -492,12 +493,14 @@ class ToolHead:
         #recreate coord
         gcode.Coord=collections.namedtuple('Coord', self.pos_axes)
         self.Coord = gcode.Coord
-        logging.info("add_extra_axis2 %s %s"%(self.commanded_pos,self.Coord._fields,))
+        logging.info("add_extra_axis2 %s %s"%(
+            self.commanded_pos,self.Coord._fields,))
         self.printer.send_event("toolhead:update_extra_axes")
     def remove_extra_axis(self, ea):
         self._flush_lookahead()
         logging.info("remove_extra_axis1 %s %s %s %s"%(
-            ea.get_axis_gcode_id(), self.pos_axes, gcode.axis_map,self.Coord._fields))
+            ea.get_axis_gcode_id(), self.pos_axes,
+            gcode.axis_map,self.Coord._fields))
         if ea not in self.extra_axes:
             return
         ea_index = self.extra_axes.index(ea) + 3
@@ -509,7 +512,8 @@ class ToolHead:
         gcode.Coord=collections.namedtuple('Coord', self.pos_axes)
         self.Coord = gcode.Coord
         logging.info("remove_extra_axis2 %s %s %s %s"%(
-            ea.get_axis_gcode_id(), self.pos_axes, gcode.axis_map,self.Coord._fields))
+            ea.get_axis_gcode_id(), self.pos_axes,
+            gcode.axis_map,self.Coord._fields))
         self.printer.send_event("toolhead:update_extra_axes")
     def get_extra_axes(self):
         return [None, None, None] + self.extra_axes
