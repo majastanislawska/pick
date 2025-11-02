@@ -430,7 +430,8 @@ class ToolHead:
         ffi_lib.trapq_set_position(self.trapq, self.print_time,
                                    newpos[0], newpos[1], newpos[2])
         self.commanded_pos[:3] = newpos[:3]
-        logging.info("toolhead.set_position overwrote commanded_pos %s with %s"%(self.commanded_pos,newpos))
+        logging.info("toolhead.set_position "
+            "overwrote commanded_pos %s with %s"%(self.commanded_pos,newpos))
         self.kin.set_position(newpos, homing_axes)
         self.printer.send_event("toolhead:set_position")
     def limit_next_junction_speed(self, speed):
@@ -446,7 +447,8 @@ class ToolHead:
         for e_index, ea in enumerate(self.extra_axes):
             if move.axes_d[e_index + 3]:
                 ea.check_move(move, e_index + 3)
-        logging.info("toolhead.move overwriting commanded_pos with %s"%(move.end_pos,))
+        logging.info("toolhead.move overwriting commanded_pos with %s"%(
+                    move.end_pos,))
         self.commanded_pos[:] = move.end_pos
         want_flush = self.lookahead.add_move(move)
         if want_flush:
@@ -479,7 +481,8 @@ class ToolHead:
     def get_extruder(self):
         return self.extra_axes[0]
     def add_extra_axis(self, ea, axis_pos):
-        logging.info("add_extra_axis1 %s %s %s %s %s"%(ea, self.pos_axes, gcode.axis_map, axis_pos,self.Coord._fields))
+        logging.info("add_extra_axis1 %s %s %s %s %s"%(
+            ea, self.pos_axes, gcode.axis_map, axis_pos,self.Coord._fields))
         self._flush_lookahead()
         self.extra_axes.append(ea)
         self.pos_axes.append(ea.get_axis_gcode_id())
@@ -534,7 +537,8 @@ class ToolHead:
     def _drip_load_trapq(self, submit_move):
         # Queue move into trapezoid motion queue (trapq)
         if submit_move.move_d:
-            logging.info("toolhead._drip_load_trapq overwriting commanded_pos with %s"%submit_move.end_pos)
+            logging.info("toolhead._drip_load_trapq "
+                "overwriting commanded_pos with %s"%submit_move.end_pos)
             self.commanded_pos[:] = submit_move.end_pos
             self.lookahead.add_move(submit_move)
         moves = self.lookahead.flush()
