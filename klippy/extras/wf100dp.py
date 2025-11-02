@@ -20,8 +20,9 @@ class WF100DPSensor:
         self.po=params['po'] #pressure_offset
         self.to=params['to'] #temp_offset
         self.td=params['td'] #temp_divider
-        self._sleep_time = config.getchoice('sleep_time',
-            {f"{i*0.0625:.4f}s": i for i in range(16)}, '0.1250s')
+        sleep_table=["%.4fs"%(i*0.0625) for i in range(16)]
+        self._sleep_time = sleep_table.index(config.getchoice('sleep_time',
+            sleep_table, '0.1250s'))
         self._last_value = 0  # Pressure
         self._last_temp = 0   # Temperature
         self._pressure_callback = None
