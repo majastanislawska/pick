@@ -73,7 +73,9 @@ i2c_bus: i2c1e
 
 ## Pneumatics
 
-in progress.
+Framework very similar to Klipper's `heaters` is being developed, it's called `[pneumatics]`. it's intended to exist parallel to heaters/temperature framework instead of reusing it for pressure so you can still use heaters and temperature sensors for whatever reason
+Currently only 'standalone' `[pressure_sensor my_sensor]` analogous to klipper's `[temperature_sensor my_sensor]` exist and only `wf100dp` i2c sensor is supported (2 variants: 100kpa and 40kpa, if you know scaling parameters for other in that series let me know).
+Support for more sensors is on the way, along support for pump that can maintain pressure and valves that can monitor pressure.
 
 ## Webhooks
 
@@ -93,8 +95,8 @@ just parse output like it would came from terminal.
 
 Same considerations regrding queuing and delay as for `gcode/script` apply.
 
-## Miscelanous 
+## Miscellaneous
 
-* Overal brightness of Neopixel strip is configurable.
+* Overall brightness of Neopixel strip is configurable.
 * Errors in gcode responses are more pronounced and easier to parse:
 `Error:` instead of `!!`
