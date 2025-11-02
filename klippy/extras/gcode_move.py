@@ -52,7 +52,7 @@ class GCodeMove:
         # G-Code state
         self.saved_states = {}
         self.move_transform = self.move_with_transform = None
-        self.position_with_transform = (lambda: [0., 0., 0., 0.])
+        self.position_with_transform = (lambda: [0.0] * len(gcode.Coord._fields))
     def _handle_ready(self):
         self.is_printer_ready = True
         if self.move_transform is None:

@@ -447,8 +447,8 @@ class ToolHead:
         for e_index, ea in enumerate(self.extra_axes):
             if move.axes_d[e_index + 3]:
                 ea.check_move(move, e_index + 3)
-        logging.info("toolhead.move overwriting commanded_pos with %s"%(
-                    move.end_pos,))
+        logging.info("toolhead.move overwriting commanded_pos %s with %s"%(
+                    self.commanded_pos,move.end_pos,))
         self.commanded_pos[:] = move.end_pos
         want_flush = self.lookahead.add_move(move)
         if want_flush:
@@ -482,28 +482,34 @@ class ToolHead:
         return self.extra_axes[0]
     def add_extra_axis(self, ea, axis_pos):
         logging.info("add_extra_axis1 %s %s %s %s %s"%(
-            ea, self.pos_axes, gcode.axis_map, axis_pos,self.Coord._fields))
+            ea.get_axis_gcode_id(), self.pos_axes, gcode.axis_map, axis_pos,self.Coord._fields))
         self._flush_lookahead()
         self.extra_axes.append(ea)
-        self.pos_axes.append(ea.get_axis_gcode_id())
+        if not ea.get_axis_gcode_id() in self.pos_axes:
+            self.pos_axes.append(ea.get_axis_gcode_id())
         if len(self.commanded_pos)<len(self.pos_axes):
             self.commanded_pos.append(axis_pos)
         #recreate coord
         gcode.Coord=collections.namedtuple('Coord', self.pos_axes)
         self.Coord = gcode.Coord
-        logging.info("add_extra_axis2 %s"%(self.Coord._fields,))
+        logging.info("add_extra_axis2 %s %s"%(self.commanded_pos,self.Coord._fields,))
         self.printer.send_event("toolhead:update_extra_axes")
     def remove_extra_axis(self, ea):
         self._flush_lookahead()
+        logging.info("remove_extra_axis1 %s %s %s %s"%(
+            ea.get_axis_gcode_id(), self.pos_axes, gcode.axis_map,self.Coord._fields))
         if ea not in self.extra_axes:
             return
         ea_index = self.extra_axes.index(ea) + 3
         self.commanded_pos.pop(ea_index)
         self.extra_axes.pop(ea_index - 3)
-        self.pos_axes.pop(ea_index - 3)
+        self.pos_axes.pop(ea_index)
+        del(gcode.axis_map[ea.get_axis_gcode_id()])
         #recreate coord
         gcode.Coord=collections.namedtuple('Coord', self.pos_axes)
         self.Coord = gcode.Coord
+        logging.info("remove_extra_axis2 %s %s %s %s"%(
+            ea.get_axis_gcode_id(), self.pos_axes, gcode.axis_map,self.Coord._fields))
         self.printer.send_event("toolhead:update_extra_axes")
     def get_extra_axes(self):
         return [None, None, None] + self.extra_axes
@@ -538,7 +544,7 @@ class ToolHead:
         # Queue move into trapezoid motion queue (trapq)
         if submit_move.move_d:
             logging.info("toolhead._drip_load_trapq "
-                "overwriting commanded_pos with %s"%submit_move.end_pos)
+                "overwriting commanded_pos with %s"%(submit_move.end_pos,))
             self.commanded_pos[:] = submit_move.end_pos
             self.lookahead.add_move(submit_move)
         moves = self.lookahead.flush()
