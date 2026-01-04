@@ -8,6 +8,7 @@ class PressureSensorGeneric:
         #self.gcode_id = config.get('gcode_id', None)
         pneu = self.printer.load_object(config, "pneumatics")
         self.sensor = pneu.setup_sensor(config)
+        self.offset = config.getfloat('offset', 0.0)
         self.min_pressure = config.getfloat('min_pressure', -100000.0)
         self.max_pressure = config.getfloat('max_pressure', 100000.0,
                                             above=self.min_pressure)
@@ -22,10 +23,10 @@ class PressureSensorGeneric:
         #self.printer.register_event_handler("klippy:ready", self._handle_ready)
 
     def pressure_callback(self, read_time, pressure):
-        self.last_pressure = pressure
         if pressure:
-            self.measured_min = min(self.measured_min, pressure)
-            self.measured_max = max(self.measured_max, pressure)
+            self.last_pressure = pressure +self.offset
+            self.measured_min = min(self.measured_min, self.last_pressure)
+            self.measured_max = max(self.measured_max, self.last_pressure)
     def get_pressure(self, eventtime):
         return self.last_pressure, 0.
     def stats(self, eventtime):
