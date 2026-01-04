@@ -79,8 +79,14 @@ i2c_bus: i2c1e
 
 ## Pneumatics
 
-Framework very similar to Klipper's `heaters` is being developed, it's called `[pneumatics]`. it's intended to exist parallel to heaters/temperature framework instead of reusing it for pressure so you can still use heaters and temperature sensors for whatever reason
-Currently only 'standalone' `[pressure_sensor my_sensor]` analogous to klipper's `[temperature_sensor my_sensor]` exist and only `wf100dp` i2c sensor is supported (2 variants: 100kpa and 40kpa, if you know scaling parameters for other in that series let me know).
+Framework very similar to Klipper's `heaters` is being developed, it's called `[pneumatics]`. it's intended to exist parallel to heaters/temperature framework instead of reusing it for pressure so you can still use heaters and temperature sensors for whatever reason.
+
+Currently only 'standalone' `[pressure_sensor my_sensor]` analogous to klipper's `[temperature_sensor my_sensor]` exists. Following sensors are suppoted for now:
+
+* `wf100dp` i2c sensor (2 variants: 100kpa and 40kpa, if you know scaling parameters for other in that series let me know).
+* Analog `XGZP6859A` series, ranges for several are in `klippy/extras/pressure_sensors.cfg`, they are named with their respective part number (ie. `XGZP6859A100KPGPN33`), other can be added with data from datasheet.
+* Differential wheatstone bridge based pressure sensors should work too with ADS1115 in differential mode (`sensor_pin: ads1:DIFF01`) and some config in `klippy/extras/pressure_sensors.cfg`
+
 Support for more sensors is on the way, along support for pump that can maintain pressure and valves that can monitor pressure.
 
 ## Webhooks
