@@ -5,6 +5,7 @@
 # This file may be distributed under the terms of the GNU GPLv3 license.
 import sys, os, pty, fcntl, termios, signal, logging, json, time
 import subprocess, traceback, shlex
+import platform, psutil
 
 
 ######################################################################
@@ -111,18 +112,8 @@ setup_python2_wrappers()
 ######################################################################
 
 def get_cpu_info():
-    try:
-        f = open('/proc/cpuinfo', 'r')
-        data = f.read()
-        f.close()
-    except (IOError, OSError) as e:
-        logging.debug("Exception on read /proc/cpuinfo: %s",
-                      traceback.format_exc())
-        return "?"
-    lines = [l.split(':', 1) for l in data.split('\n')]
-    lines = [(l[0].strip(), l[1].strip()) for l in lines if len(l) == 2]
-    core_count = [k for k, v in lines].count("processor")
-    model_name = dict(lines).get("model name", "?")
+    core_count = psutil.cpu_count(logical=True)
+    model_name = platform.processor()
     return "%d core %s" % (core_count, model_name)
 
 def get_version_from_file(klippy_src):
