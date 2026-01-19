@@ -285,6 +285,7 @@ class PrinterExtruder:
 class DummyExtruder:
     def __init__(self, printer):
         self.printer = printer
+        self.name = "DummyExtruder"
     def check_move(self, move, ea_index):
         raise move.move_error("Extrude when no extruder present")
     def find_past_position(self, print_time):

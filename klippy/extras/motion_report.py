@@ -154,16 +154,9 @@ class PrinterMotionReport:
         toolhead = self.printer.lookup_object("toolhead")
         trapq = toolhead.get_trapq()
         self.trapqs['toolhead'] = DumpTrapQ(self.printer, 'toolhead', trapq)
-        # Lookup extruder trapqs
-        for i in range(99):
-            ename = "extruder%d" % (i,)
-            if ename == "extruder0":
-                ename = "extruder"
-            extruder = self.printer.lookup_object(ename, None)
-            if extruder is None:
-                break
-            etrapq = extruder.get_trapq()
-            self.trapqs[ename] = DumpTrapQ(self.printer, ename, etrapq)
+        # Lookup extra axes trapqs
+        for name, stepper in self.printer.lookup_objects("manual_stepper"):
+            self.trapqs[name] = DumpTrapQ(self.printer, name, stepper.get_trapq())
         # Populate 'trapq' and 'steppers' in get_status result
         self.last_status['steppers'] = list(sorted(self.steppers.keys()))
         self.last_status['trapq'] = list(sorted(self.trapqs.keys()))
@@ -204,27 +197,30 @@ class PrinterMotionReport:
         if eventtime < self.next_status_time or not self.trapqs:
             return self.last_status
         self.next_status_time = eventtime + STATUS_REFRESH_TIME
-        xyzpos = (0., 0., 0.)
-        epos = (0.,)
+        toolhead = self.printer.lookup_object('toolhead')
+        extra_axes = toolhead.get_extra_axes()
+        pos = [0.] * len(extra_axes)
         xyzvelocity = evelocity = 0.
         # Calculate current requested toolhead position
         mcu = self.printer.lookup_object('mcu')
         print_time = mcu.estimated_print_time(eventtime)
-        pos, velocity = self.trapqs['toolhead'].get_trapq_position(print_time)
-        if pos is not None:
-            xyzpos = pos[:3]
+        xyzpos, velocity = self.trapqs['toolhead'].get_trapq_position(print_time)
+        if xyzpos is not None:
+            pos[:3] = xyzpos[:3]
             xyzvelocity = velocity
-        # Calculate requested position of currently active extruder
-        toolhead = self.printer.lookup_object('toolhead')
-        ehandler = self.trapqs.get(toolhead.get_extruder().get_name())
-        if ehandler is not None:
-            pos, velocity = ehandler.get_trapq_position(print_time)
-            if pos is not None:
-                epos = (pos[0],)
-                evelocity = velocity
+        for i, axis in enumerate(extra_axes):
+            if axis is None:
+                continue
+            trapq = self.trapqs.get(axis.name)
+            if trapq is not None:
+                axpos, velocity = trapq.get_trapq_position(print_time)
+                if axpos is not None:
+                    pos[i] = axpos[0]
+                    if i == 3:  # extruder axis
+                        evelocity = velocity
         # Report status
         self.last_status = dict(self.last_status)
-        self.last_status['live_position'] = toolhead.Coord(*(xyzpos + epos))
+        self.last_status['live_position'] = toolhead.Coord(*(pos))
         self.last_status['live_velocity'] = xyzvelocity
         self.last_status['live_extruder_velocity'] = evelocity
         return self.last_status
