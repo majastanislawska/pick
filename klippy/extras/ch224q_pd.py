@@ -31,6 +31,12 @@ class CH224QPD:
         self.name = config.get_name().split()[-1]  # e.g., toolhead
         self.i2c = bus.MCU_I2C_from_config(
             config, default_addr=0x22, default_speed=100000)
+        self.printer = config.get_printer()
+        self.reactor = self.printer.get_reactor()
+        self.last_voltage = 0.0
+        self.last_powergood = False
+        self.sample_interval = config.getint('sample_interval', 30, minval=5)
+        self.sample_timer = self.reactor.register_timer(self._sample)
         gcode = config.get_printer().lookup_object('gcode')
         gcode.register_command('PD_SET', self.cmd_PD_SET,
             desc="Set PD voltage (e.g., PD_SET MCU=toolhead "
@@ -39,6 +45,13 @@ class CH224QPD:
             desc="Get PD status (e.g., PD_GET MCU=toolhead)")
         gcode.register_command('PD_CAPS', self.cmd_PD_CAPS,
             desc="Dump PD SrcCap (e.g., PD_CAPS MCU=toolhead)")
+        self.printer.register_event_handler("klippy:connect", self.handle_connect)
+        self.printer.register_event_handler("klippy:shutdown", self.handle_shutdown)
+
+    def handle_connect(self):
+        self.reactor.update_timer(self.sample_timer, self.reactor.NOW)
+    def handle_shutdown(self):
+        self.reactor.update_timer(self.sample_timer, self.reactor.NEVER)
 
     def _write_reg8(self, reg, value):
         self.i2c.i2c_write([reg, value & 0xFF])
@@ -61,6 +74,34 @@ class CH224QPD:
     def _read_src_cap(self):
         resp = self.i2c.i2c_read([REG_SRCCAP_START], 48)
         return resp['response']
+
+    def _sample(self, eventtime):
+        status, voltage_mv = self._get_voltage()
+        self.last_powergood = bool(status & 0x80)
+        self.last_voltage = voltage_mv / 1000.0
+        logging.info("CH224QPD %s: voltage:%.1f powergood:%s"%
+                (self.name, self.last_voltage,self.last_powergood))
+        return eventtime + self.sample_interval
+
+    def _get_voltage(self):
+        # Read voltage (0x0A first, then 0x53 or 0x51-0x52 if needed)
+        voltage_mv = 0
+        status = self._read_reg8(REG_STATUS)
+        raw_volt = self._read_reg8(REG_VOLT_REQ)
+        if raw_volt == 0x06 and status & 0x08:  # PPS
+            raw_pps = self._read_reg8(REG_PPS_VOLT)
+            if 3300 <= raw_pps * 100 <= 21000:
+                voltage_mv = raw_pps * 100
+        elif raw_volt == 0x07 and status & 0x40:  # AVS
+            raw_avs = self._read_reg16(REG_AVS_HIGH)
+            if 3300 <= raw_avs * 25 <= 21000:
+                voltage_mv = raw_avs * 25
+        else:
+            for v, code in VOLTAGE_CODES.items():
+                if raw_volt == code:
+                    voltage_mv = v
+                    break
+        return status, voltage_mv
 
     def cmd_PD_SET(self, gcmd):
         mcu = gcmd.get('MCU', self.name)
@@ -85,12 +126,13 @@ class CH224QPD:
         else:
             self._write_reg8(REG_VOLT_REQ, VOLTAGE_CODES[voltage])
         gcmd.respond_info("PD requested: %.1fV (%s)" % (voltage / 1000.0, mode))
+        self.reactor.update_timer(self.sample_timer, self.reactor.NOW)
 
     def cmd_PD_GET(self, gcmd):
         mcu = gcmd.get('MCU', self.name)
         if mcu != self.name:
             return
-        status = self._read_reg8(REG_STATUS)
+        status, voltage_mv = self._get_voltage()
         active_protocols = []
         if status & 0x01: active_protocols.append("BC")
         if status & 0x02: active_protocols.append("QC2")
@@ -99,26 +141,12 @@ class CH224QPD:
         if status & 0x10: active_protocols.append("EPR")
         epr_exist = "yes" if status & 0x20 else "no"
         avs_exist = "yes" if status & 0x40 else "no"
-        power_good = "yes" if status & 0x80 else "no"
+        self.last_powergood = bool(status & 0x80)
+        power_good = "yes" if self.last_powergood else "no"
         raw_curr = self._read_reg16(REG_CURR_MAX)
         max_curr_ma = raw_curr * 50 if status & 0x08 else 0
-        # Read voltage (0x0A first, then 0x53 or 0x51-0x52 if needed)
-        voltage_mv = 0
-        raw_volt = self._read_reg8(REG_VOLT_REQ)
-        if raw_volt == 0x06 and status & 0x08:  # PPS
-            raw_pps = self._read_reg8(REG_PPS_VOLT)
-            if 3300 <= raw_pps * 100 <= 21000:
-                voltage_mv = raw_pps * 100
-        elif raw_volt == 0x07 and status & 0x40:  # AVS
-            raw_avs = self._read_reg16(REG_AVS_HIGH)
-            if 3300 <= raw_avs * 25 <= 21000:
-                voltage_mv = raw_avs * 25
-        else:
-            for v, code in VOLTAGE_CODES.items():
-                if raw_volt == code:
-                    voltage_mv = v
-                    break
-        voltage = "%.1f" % (voltage_mv / 1000.0) if voltage_mv else "unknown"
+        self.last_voltage = voltage_mv / 1000.0
+        voltage = "%.1f"%(self.last_voltage) if voltage_mv else "unknown"
         gcmd.respond_raw(
             "voltage:%s current:%.1f protocols:%s epr_support:%s "
             "avs_support:%s power_good:%s" % (
@@ -271,6 +299,15 @@ class CH224QPD:
             report = "PD/EPR SrcCap:\n"
             report +="PDOs: 0 (PD mode required or data invalid)"
         gcmd.respond_info(report)
+
+    def stats(self, eventtime):
+        return False, '%s: voltage=%.2f powergood=%s' % (self.name, self.last_voltage,self.last_powergood)
+
+    def get_status(self, eventtime):
+        return {
+            'voltage': round(self.last_voltage, 2),
+            'powergood': self.last_powergood,
+        }
 
 def load_config_prefix(config):
     return CH224QPD(config)
