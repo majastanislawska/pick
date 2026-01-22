@@ -19,7 +19,6 @@ class ADCtoPressure:
         ppins = config.get_printer().lookup_object('pins')
         self.mcu_adc = ppins.setup_pin('adc', self.sensor_pin)
         self.gcode_id = config.get('gcode_id', None)
-        logging.info("ADCtoPressure.init %s %s" % (self.gcode_id,self.sensor_pin))
         self.mcu_adc.setup_adc_callback(REPORT_TIME, self.adc_callback)
         self.diag_helper = HelperPressureDiagnostics(
             config, self.mcu_adc, adc_convert.calc_pressure)
@@ -31,7 +30,7 @@ class ADCtoPressure:
         val = self.adc_convert.calc_pressure(read_value)
         # logging.info("adc_pressureadc_callback %s %s %s" % (self.name, read_value,val))
         self.pressure_callback(read_time + SAMPLE_COUNT * SAMPLE_TIME, val)
-    def setup_minmax(self, min_pressure, max_pressure):
+    def setup_pressure_minmax(self, min_pressure, max_pressure):
         arange = [self.adc_convert.calc_adc(t) for t in [min_pressure, max_pressure]]
         min_adc, max_adc = sorted(arange)
         self.mcu_adc.setup_adc_sample(SAMPLE_TIME, SAMPLE_COUNT,
@@ -66,7 +65,7 @@ class HelperPressureDiagnostics:
         try:
             last_pressure = self.calc_pressure_cb(last_value)
             tempstr = "%.3f" % (last_pressure,)
-        except e:
+        except:
             logging.exception("Error in calc_pressure callback")
         return ("Sensor '%s' pressure %s not in range %.3f:%.3f"
                 % (self.name, tempstr, self.min_pressure, self.max_pressure))

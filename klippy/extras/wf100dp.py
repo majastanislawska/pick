@@ -23,18 +23,16 @@ class WF100DPSensor:
         sleep_table=["%.4fs"%(i*0.0625) for i in range(16)]
         self._sleep_time = sleep_table.index(config.getchoice('sleep_time',
             sleep_table, '0.1250s'))
-        self._last_value = 0  # Pressure
+        self._last_pressure = 0  # Pressure
         self._last_temp = 0   # Temperature
         self._pressure_callback = None
         self._temp_callback = None
         self._i2c_addr = 0x6D  # Fixed address
         self._i2c = bus.MCU_I2C_from_config(config, self._i2c_addr)
         self._mcu = self._i2c.get_mcu()
-        # pheaters = self.printer.load_object(config, 'heaters')
-        # pheaters.register_sensor(config, self)
         self.sample_timer = self._reactor.register_timer(self._sample)
-        self._printer.register_event_handler("klippy:connect",
-                                             self._handle_connect)
+        self._printer.register_event_handler("klippy:connect", self._handle_connect)
+        self._printer.register_event_handler("klippy:shutdown", self._handle_shutdown)
 
     def _handle_connect(self):
         self._i2c.i2c_write([0x1C])  # Reset
@@ -47,30 +45,26 @@ class WF100DPSensor:
                                       else 10 ) # Default 10s for 0s
         self._reactor.update_timer(self.sample_timer, self._reactor.NOW)
 
+    def _handle_shutdown(self):
+        self._reactor.update_timer(self.sample_timer, self._reactor.NEVER)
+
     def setup_minmax(self, min_temp, max_temp):
         self.min_temp = min_temp
         self.max_temp = max_temp
-    def setup_presssure_minmax(self, min_temp, max_temp):
-        self.min_temp = min_temp
-        self.max_temp = max_temp
+    def setup_pressure_minmax(self, min_pressure, max_pressure):
+        self.min_pressure = min_pressure
+        self.max_pressure = max_pressure
     def _sensor_read(self):
         return self._i2c.i2c_read([0x06], 5)['response']
-        #  d1=self._i2c.i2c_read([0x06], 3)['response']
-        #  d2=self._i2c.i2c_read([0x09], 2)['response']
-        #  return d1+d2 #[0x0,0x0,0x0,0x0,0x0] #
     def _sample(self, eventtime):
         data=d1=self._i2c.i2c_read([0x06], 5)['response']
         press=float(int.from_bytes(data[:3],'big',signed=True))
-        self._last_value=((press * self.pm)/float(1<<23)) + self.po
+        self._last_pressure=((press * self.pm)/float(1<<23)) + self.po
         temp=float(int.from_bytes(data[3:],'big',signed=True))
         self._last_temp=(temp + self.to) / self.td
-        # logging.info("WF100DPZ %s: pres:%s temp:%s"%
-        #         (self.name, self._last_value,self._last_temp))
         if self._pressure_callback:
-            #logging.info("WF100DPZ %s:calling pressure callback"% (self.name))
-            self._pressure_callback(eventtime, self._last_value)
+            self._pressure_callback(eventtime, self._last_pressure)
         if self._temp_callback:
-            #logging.info("WF100DPZ %s:calling temp callback"% (self.name))
             self._temp_callback(eventtime, self._last_temp)
         return eventtime + self._sample_interval
     def setup_callback(self, cb):
@@ -78,7 +72,7 @@ class WF100DPSensor:
     def setup_pressure_callback(self, cb):
         self._pressure_callback = cb
     def get_status(self, eventtime):
-        return {'pressure': self._last_value, 'temperature': self._last_temp}
+        return {'pressure': self._last_pressure, 'temperature': self._last_temp}
 
 class WF100dpFactory:
     def __init__(self, config):
@@ -88,14 +82,12 @@ class WF100dpFactory:
         self.params['po'] = config.getfloat("wf100dp_pressure_offset")
         self.params['to'] = config.getfloat("wf100dp_temp_offset")
         self.params['td'] = config.getfloat("wf100dp_temp_divider")
-        logging.info("WF100dpFactory %s"%(self.name))
+
     def create(self, config):
-        logging.info("WF100dpFactory creating sensor %s %s"%(self.name,config))
         return WF100DPSensor(config, self.params)
 
 def load_config_prefix(config):
     sensor= WF100dpFactory(config)
     name = config.get_name().split()[-1]
     pneu = config.get_printer().load_object(config, "pneumatics")
-    logging.info("wf100dp factory load_config_prefix '%s'" % (pneu))
     pneu.add_sensor_factory(name, sensor.create)
