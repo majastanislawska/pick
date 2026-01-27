@@ -71,6 +71,8 @@ class WF100DPSensor:
         self._temp_callback = cb
     def setup_pressure_callback(self, cb):
         self._pressure_callback = cb
+    def get_report_time_delta(self):
+        return self._sample_interval
     def get_status(self, eventtime):
         return {'pressure': self._last_pressure, 'temperature': self._last_temp}
 
