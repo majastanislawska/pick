@@ -1,4 +1,4 @@
-# Main object for pneumatics system 
+# Main object for pneumatics system
 #
 # Based on heaters.py by Kevin O'Connor <kevin@koconnor.net>
 # Copyright (C) 2025 Maja Stanislawska <maja@makershop.ie>
@@ -12,8 +12,10 @@ class Pneumatics:
         self.printer = config.get_printer()
         self.sensor_factories = {}
         self.pumps = {}
+        self.valves = {}
         self.gcode_id_to_sensor = {}
         self.available_pumps = []
+        self.available_valves = []
         self.available_sensors = []
         self.has_started = self.have_load_sensors = False
         self.printer.register_event_handler("klippy:ready", self._handle_ready)
@@ -57,6 +59,15 @@ class Pneumatics:
         self.available_pumps.append(config.get_name())
         logging.info("register_pump %s %s %s" % (pump_name,self.pumps,config))
         return pump
+    def register_valve(self, valve,config):
+        valve_name = valve.short_name
+        if valve_name in self.valves:
+            raise config.error("valve %s already registered" % (valve_name,))
+        # Create valve
+        self.valves[valve_name] = valve
+        self.available_valves.append(config.get_name())
+        logging.info("register_valve %s %s %s" % (valve_name,self.valves,config))
+        return valve
     def setup_sensor(self, config):
         if not self.have_load_sensors:
             self.load_config(config)
@@ -80,6 +91,7 @@ class Pneumatics:
         self.gcode_id_to_sensor[gcode_id] = psensor
     def get_status(self, eventtime):
         return {'available_pumps': self.available_pumps,
+                'available_valves': self.available_valves,
                 'available_sensors': self.available_sensors}
     def turn_off_all_pumps(self, print_time=0.):
         for pump in self.pumps.values():

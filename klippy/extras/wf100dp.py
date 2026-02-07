@@ -23,6 +23,10 @@ class WF100DPSensor:
         sleep_table=["%.4fs"%(i*0.0625) for i in range(16)]
         self._sleep_time = sleep_table.index(config.getchoice('sleep_time',
             sleep_table, '0.1250s'))
+        # Set sample interval based on sleep_time (in seconds)
+        self._sample_interval = (
+            self._sleep_time * 0.0625 if self._sleep_time
+                                      else 1 ) # Default 1s for 0s
         self._last_pressure = 0  # Pressure
         self._last_temp = 0   # Temperature
         self._pressure_callback = None
@@ -39,10 +43,6 @@ class WF100DPSensor:
         self._reactor.pause(self._reactor.monotonic() + 0.01)
         mode = 0x0B | (self._sleep_time << 4)  # Combined pressure + temp
         self._i2c.i2c_write([0x30, mode])
-        # Set sample interval based on sleep_time (in seconds)
-        self._sample_interval = (
-            self._sleep_time * 0.0625 if self._sleep_time
-                                      else 10 ) # Default 10s for 0s
         self._reactor.update_timer(self.sample_timer, self._reactor.NOW)
 
     def _handle_shutdown(self):
