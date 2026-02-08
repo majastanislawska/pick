@@ -54,10 +54,15 @@ class WF100DPSensor:
     def setup_pressure_minmax(self, min_pressure, max_pressure):
         self.min_pressure = min_pressure
         self.max_pressure = max_pressure
-    def _sensor_read(self):
-        return self._i2c.i2c_read([0x06], 5)['response']
     def _sample(self, eventtime):
-        data=d1=self._i2c.i2c_read([0x06], 5)['response']
+        if self._mcu.is_shutdown():
+            return self._reactor.NEVER
+        try:
+            data=self._i2c.i2c_read([0x06], 5)['response']
+        except:
+            logging.error("WF100DP sensor read error")
+            self._last_pressure=self._last_temp=0
+            return self._reactor.NEVER
         press=float(int.from_bytes(data[:3],'big',signed=True))
         self._last_pressure=((press * self.pm)/float(1<<23)) + self.po
         temp=float(int.from_bytes(data[3:],'big',signed=True))
