@@ -81,13 +81,63 @@ i2c_bus: i2c1e
 
 Framework very similar to Klipper's `heaters` is being developed, it's called `[pneumatics]`. it's intended to exist parallel to heaters/temperature framework instead of reusing it for pressure so you can still use heaters and temperature sensors for whatever reason.
 
-Currently only 'standalone' `[pressure_sensor my_sensor]` analogous to klipper's `[temperature_sensor my_sensor]` exists. Following sensors are suppoted for now:
+### Pressure sensors
+
+Following sensors are supported for now:
 
 * `wf100dp` i2c sensor (2 variants: 100kpa and 40kpa, if you know scaling parameters for other in that series let me know).
 * Analog `XGZP6859A` series, ranges for several are in `klippy/extras/pressure_sensors.cfg`, they are named with their respective part number (ie. `XGZP6859A100KPGPN33`), other can be added with data from datasheet.
 * Differential wheatstone bridge based pressure sensors should work too with ADS1115 in differential mode (`sensor_pin: ads1:DIFF01`) and some config in `klippy/extras/pressure_sensors.cfg`
 
 Support for more sensors is on the way, along support for pump that can maintain pressure and valves that can monitor pressure.
+
+Sensors can be used as 'standalone' `[pressure_sensor my_sensor]` analogous to klipper's `[temperature_sensor my_sensor]`, or attached to pump or valve.
+
+### Pump
+
+Pump object can be set to maintain pressure in a system, similar to what heater does with temperature. This works really nice if you have pump with reservoir (tank) and separate valves for nozzles.
+Currently only BanBang algorithm is implemented.
+`cycle_time` is hardcoded to `report_interval` of sensor.
+Only command for now is `SET_PUMP_PRESSURE PUMP=<name> TARGET=<value>`
+config looks like this:
+
+```text
+[pressure_pump pump]
+gcode_id: PUMP
+pump_pin: PUMP_pin
+hardware_pwm: False
+max_power: 1
+control:watermark
+#sensor config part
+sensor_type: XGZP6859A100KPGPN33
+sensor_pin: gpio29
+adc_voltage: 3.3
+offset: -2
+```
+
+### Valve
+
+Valve is rather simple object that (for now) operates like a binary `output_pin` but lets you configure `kick_start_time` during which `max_power` will be supplied (to force valve to open), after which switches to `hold_value` so solenoid doesn't overheat. It can contain pressure sensor config.
+
+There's command to open/close valve: `VALVE_SET VALVE=<gcode_id> VALUE=[0|1|ON|OFF|OPEN|CLOSE]`
+and to read its status and value of attached sensor: `VALVE_GET VALVE=<gcode_id>`, response looks like this: `<gcode_id>:<value(%.2f)> OPEN|CLOSED`
+
+Config looks like this:
+
+```text
+[pressure_valve LEFT]
+pin: toolhead:VALVE1
+hardware_pwm: True
+max_power: 1.0
+hold_value: 0.75
+kick_start_time: 0.2
+#optional sensor
+sensor_type: WF100DPZ1BGS6DT
+i2c_mcu: toolhead
+i2c_bus: i2c0e
+# sleep_time: 0.1250s
+offset: 0.4
+```
 
 ## Webhooks
 
