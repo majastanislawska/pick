@@ -138,7 +138,10 @@ class PrinterExtruder:
         # Setup hotend heater
         pheaters = self.printer.load_object(config, 'heaters')
         gcode_id = 'T%d' % (extruder_num,)
-        self.heater = pheaters.setup_heater(config, gcode_id)
+        if config.get('sensor_type', None) is None:
+            self.heater = DummyHeater(self.printer,gcode_id)
+        else:
+            self.heater = pheaters.setup_heater(config, gcode_id)
         # Setup kinematic checks
         self.nozzle_diameter = config.getfloat('nozzle_diameter', above=0.)
         filament_diameter = config.getfloat(
@@ -280,6 +283,17 @@ class PrinterExtruder:
         toolhead.flush_step_generation()
         toolhead.set_extruder(self, self.last_position)
         self.printer.send_event("extruder:activate_extruder")
+
+class DummyHeater:
+    def __init__(self, printer,gcode_id):
+        self.printer = printer
+        self.name = "DummyHeater"
+        self.gcode_id = gcode_id
+        self.can_extrude = True
+    def get_status(self, eventtime):
+        return {'temperature': 0, 'target': 0, 'power': 0}
+    def stats(self, eventtime):
+        return True, '%s: null' % (self.gcode_id,)
 
 # Dummy extruder class used when a printer has no extruder at all
 class DummyExtruder:
