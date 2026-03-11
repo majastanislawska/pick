@@ -69,7 +69,11 @@ class PressurePump:
         self.mcu_pwm.set_pwm(print_time, value)
     def set_pwm(self,read_time, value):
         if self.mcu_pwm.get_mcu().is_shutdown(): return
-        self.gcrq.queue_gcode_request(value)
+        if read_time is not None:
+            read_time += 0.2
+        self._apply_pwm(read_time, value)
+        # self.gcrq.send_async_request(value)
+        # self.gcrq.queue_gcode_request(value)
     def pressure_callback(self, read_time, pressure):
         if pressure:
             pressure +=self.offset
