@@ -99,7 +99,7 @@ class Valve:
             self.short_name,  is_active, self.last_pressure,
             self.last_pwm_value)
     def get_pressure(self, eventtime):
-        return self.smoothed_pressure, 0. #, self.target_pressure
+        return self.last_pressure, 0. #, self.target_pressure
     def get_status(self, eventtime):
         return {'on': self.last_pwm_value != 0.,
                 'pressure': round(self.smoothed_pressure, 2),
@@ -117,9 +117,11 @@ class Valve:
         else: raise gcmd.error("VALVE_SET VALUE parameter must be 0/1 or ON/OFF or OPEN/CLOSE")
     cmd_VALVE_GET_help= "get valve status. VALVE_GET VALVE=<name>"
     def cmd_VALVE_GET(self, gcmd):
+        reactor = self.printer.get_reactor()
+        cur, _ = self.get_pressure(reactor.monotonic())
         status= "CLOSED" if self.last_pwm_value == 0. else "OPEN"
         gcmd.respond_raw("%s:%.2f %s" % (self.gcode_id,
-            round(self.smoothed_pressure, 2), status))
+            round(cur, 2), status))
 
 def load_config_prefix(config):
     return Valve(config)
