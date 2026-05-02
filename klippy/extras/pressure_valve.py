@@ -54,6 +54,9 @@ class Valve:
         gcode.register_mux_command("VALVE_GET", "VALVE",
                                    self.gcode_id, self.cmd_VALVE_GET,
                                    desc=self.cmd_VALVE_GET_help)
+        gcode.register_mux_command("VALVE_WAIT", "VALVE",
+                                   self.gcode_id, self.cmd_VALVE_WAIT,
+                                   desc=self.cmd_VALVE_WAIT_help)
 
     def _kill(self, print_time=None):
         self.set_pwm(0., print_time)
@@ -122,6 +125,36 @@ class Valve:
         status= "CLOSED" if self.last_pwm_value == 0. else "OPEN"
         gcmd.respond_raw("%s:%.2f %s" % (self.gcode_id,
             round(cur, 2), status))
+    cmd_VALVE_WAIT_help = "Wait for a valve to reach a specific state"
+    def cmd_VALVE_WAIT(self, gcmd):
+        # sensor_name = gcmd.get('SENSOR')
+        # if sensor_name not in self.available_sensors:
+        #     raise gcmd.error("Unknown sensor '%s'" % (sensor_name,))
+        self.min_pressure = gcmd.get_float('MINIMUM', float('-inf'))
+        self.max_pressure = gcmd.get_float('MAXIMUM', float('inf'), above=self.min_pressure)
+        timeout = gcmd.get_float('TIMEOUT', 1)
+        if self.min_pressure == float('-inf') and self.max_pressure == float('inf'):
+            raise gcmd.error(
+                "Error on 'VALVE_WAIT': missing MINIMUM or MAXIMUM.")
+        if self.printer.get_start_args().get('debugoutput') is not None:
+            return
+        self.open()
+        toolhead = self.printer.lookup_object("toolhead")
+        reactor = self.printer.get_reactor()
+        starttime= eventtime = reactor.monotonic()
+        while not self.printer.is_shutdown():
+            cur, _ = self.get_pressure(eventtime)
+            print_time = toolhead.get_last_move_time()
+            status= "CLOSED" if self.last_pwm_value == 0. else "OPEN"
+            gcmd.respond_raw("%s:%.2f %s" % (self.gcode_id,
+            round(cur, 2), status))
+            if cur >= self.min_pressure and cur <= self.max_pressure:
+                return
+            time_diff = eventtime - starttime
+            if time_diff > timeout: break
+            eventtime = reactor.pause(eventtime + 0.1)
+        self.open()
+        raise gcmd.error("VALVE_WAIT timeout after %.1f seconds" % (time_diff,))
 
 def load_config_prefix(config):
     return Valve(config)
