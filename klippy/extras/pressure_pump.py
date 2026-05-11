@@ -117,7 +117,8 @@ class PressurePump:
             self.short_name,  self.target_pressure, self.last_pressure,
             self.last_pwm_value)
     def get_status(self, eventtime):
-        return {'pressure': round(self.smoothed_pressure, 2),
+        return { 'on': self.target_pressure != 0.,
+                'pressure': round(self.smoothed_pressure, 2),
                 'target': self.target_pressure,
                 'power': self.last_pwm_value}
     cmd_SET_PUMP_PRESSURE_help = "Sets pump pressure"
