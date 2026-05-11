@@ -48,6 +48,9 @@ class PCA9685Controller:
         self.toolhead.all_mcus.append(self)
 
     def _handle_shutdown(self):
+        if self._mcu.is_shutdown():
+            logging.info("PCA9685 %s _handle_shutdown: MCU already dead"%(self.name,))
+            return
         for pin in self._pins.values():
             pin._set_pwm_value(pin._shutdown_value)
 
