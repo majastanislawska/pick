@@ -135,6 +135,7 @@ class ServerSocket:
                         self.sock = socket.socket(socket.AF_INET6,socket.SOCK_STREAM)
                     else: # IPv4 address
                         self.sock = socket.socket(socket.AF_INET,socket.SOCK_STREAM)
+                    self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
                     self.sock.setblocking(0)
                     self.sock.bind((server_url.hostname,server_url.port if server_url.port else 7120))
                 except OSError as e:
