@@ -5,6 +5,7 @@ Pick (&#x1D745;&#x1D450;&#x1D458;) is a spinoff of [Klipper](https://www.klipper
 That is:
 
 * support for extra axes (working M114)
+* camera support
 * USB Power Delivery (CH224Q configurable over i2c) for a slim toolhead board
 * central endstop
 * support for pumps, valves, and pressure sensors, not just by reusing features related to hotend/hotbed temperature (todo)
@@ -47,6 +48,12 @@ rotation_distance: 360
 
 some effort has been made to make those steppers show up and be acted upon in relevant gcode commands so OpenPNP can see and use them.
 Maybe some deeper integration into kinematics will be done in future, but it's good enough for now.
+
+## Camera Support
+
+There's mow a module that allows to spawn ustreamer for as many cameras as you need and provide some control of it's controls. Those can be received by OpenPNP's MJPGCaptureCamera.
+Intent is to allow Pick to sit on RaspberryPi mounted on machine and operate OpenPNp from desktop
+this is Linux specitic module, uses V4L.
 
 ## Central Endstop
 

@@ -1695,3 +1695,17 @@ in case of using PD_SET with voltage not supported by charger, voltage will show
 
 #### PD_CAPS
 `PD_CAPS [MCU=<name>]` Dumps PD Source Capabilities: header and power profiles (PDOs) (fixed, PPS, or AVS).
+
+## Cameras and Vision
+
+### [camera_ustreamer cam]
+
+#### CAM_GET
+`CAM_GET CAM=<name>` Dumps available controls (brightnes focus etc) for given camera.
+
+#### CAM_SET
+`CAM_SET CAM=<name> [param=value] [param2=value2]` Sets value of camera controls. you can pass as many parameters as yoou need. Check `CAM_GET` for names and allowed values.
+Please note that some parameters depend on eachother and order of parameters or combinnation of values sometimes matter. (ie, you need to switch auto_exposure to manual mode before setting exposure_time, same with (auto)_focus)
+
+#### CAM_RESTART
+`CAM_RESTART CAM=<name>` Kills ustreamer for given cammera and respawns it.

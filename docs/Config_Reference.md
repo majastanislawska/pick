@@ -5261,6 +5261,27 @@ gcode commands use parameter MCU= for same reason.
 #   parameters.
 ```
 
+## Cameras and Vision
+
+### [camera_ustreamer cam]
+
+This module allows to spawn ustreamer server directly from pick and control camera parameters. Any misconciguration (unsupported control name or value) here will raise config error and prevent machine from starting.
+
+this is linux specific modulle
+```
+[camera_ustreamer topcam]
+device: /dev/video0
+resolution: 640x480
+port: 8080
+extra_args: -f 15 #framerate
+# all avaiable (supported bby youy camera) controls that can be added here (and values)
+# can be seen with CAM_GET CAM=<name>. It's output can be pasted here
+# and set/test live with CAM_SET CAM=<name> param=val param2=val
+#white_balance_automatic: 0
+#white_balance_temperature: 4600 
+#[...]
+```
+
 ## Board specific hardware support
 
 ### [sx1509]
