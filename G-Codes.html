@@ -2594,6 +2594,53 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#cameras-and-vision" class="md-nav__link">
+    Cameras and Vision
+  </a>
+  
+    <nav class="md-nav" aria-label="Cameras and Vision">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#camera_ustreamer-cam" class="md-nav__link">
+    [camera_ustreamer cam]
+  </a>
+  
+    <nav class="md-nav" aria-label="[camera_ustreamer cam]">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#cam_get" class="md-nav__link">
+    CAM_GET
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#cam_set" class="md-nav__link">
+    CAM_SET
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#cam_restart" class="md-nav__link">
+    CAM_RESTART
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -4965,6 +5012,53 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#cameras-and-vision" class="md-nav__link">
+    Cameras and Vision
+  </a>
+  
+    <nav class="md-nav" aria-label="Cameras and Vision">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#camera_ustreamer-cam" class="md-nav__link">
+    [camera_ustreamer cam]
+  </a>
+  
+    <nav class="md-nav" aria-label="[camera_ustreamer cam]">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#cam_get" class="md-nav__link">
+    CAM_GET
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#cam_set" class="md-nav__link">
+    CAM_SET
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#cam_restart" class="md-nav__link">
+    CAM_RESTART
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -6419,6 +6513,15 @@ when power supply is uncapable of power delivery, voltage will show 'prefered' v
 in case of using PD_SET with voltage not supported by charger, voltage will show last requested voltage, protocols will list supported protocols, power_good 'no' and current bogus value.</p>
 <h4 id="pd_caps">PD_CAPS<a class="headerlink" href="#pd_caps" title="Permanent link">&para;</a></h4>
 <p><code>PD_CAPS [MCU=&lt;name&gt;]</code> Dumps PD Source Capabilities: header and power profiles (PDOs) (fixed, PPS, or AVS).</p>
+<h2 id="cameras-and-vision">Cameras and Vision<a class="headerlink" href="#cameras-and-vision" title="Permanent link">&para;</a></h2>
+<h3 id="camera_ustreamer-cam">[camera_ustreamer cam]<a class="headerlink" href="#camera_ustreamer-cam" title="Permanent link">&para;</a></h3>
+<h4 id="cam_get">CAM_GET<a class="headerlink" href="#cam_get" title="Permanent link">&para;</a></h4>
+<p><code>CAM_GET CAM=&lt;name&gt;</code> Dumps available controls (brightnes focus etc) for given camera.</p>
+<h4 id="cam_set">CAM_SET<a class="headerlink" href="#cam_set" title="Permanent link">&para;</a></h4>
+<p><code>CAM_SET CAM=&lt;name&gt; [param=value] [param2=value2]</code> Sets value of camera controls. you can pass as many parameters as yoou need. Check <code>CAM_GET</code> for names and allowed values.
+Please note that some parameters depend on eachother and order of parameters or combinnation of values sometimes matter. (ie, you need to switch auto_exposure to manual mode before setting exposure_time, same with (auto)_focus)</p>
+<h4 id="cam_restart">CAM_RESTART<a class="headerlink" href="#cam_restart" title="Permanent link">&para;</a></h4>
+<p><code>CAM_RESTART CAM=&lt;name&gt;</code> Kills ustreamer for given cammera and respawns it.</p>
 
               
             </article>

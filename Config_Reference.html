@@ -1763,6 +1763,26 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#cameras-and-vision" class="md-nav__link">
+    Cameras and Vision
+  </a>
+  
+    <nav class="md-nav" aria-label="Cameras and Vision">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#camera_ustreamer-cam" class="md-nav__link">
+    [camera_ustreamer cam]
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#board-specific-hardware-support" class="md-nav__link">
     Board specific hardware support
   </a>
@@ -3930,6 +3950,26 @@
           <li class="md-nav__item">
   <a href="#ch224q_pd-mcu" class="md-nav__link">
     [ch224q_pd mcu]
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#cameras-and-vision" class="md-nav__link">
+    Cameras and Vision
+  </a>
+  
+    <nav class="md-nav" aria-label="Cameras and Vision">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#camera_ustreamer-cam" class="md-nav__link">
+    [camera_ustreamer cam]
   </a>
   
 </li>
@@ -8848,6 +8888,23 @@ gcode commands use parameter MCU= for same reason.</p>
 #i2c_bus: i2c1e
 #   See the &quot;common I2C settings&quot; section for a description of the
 #   parameters.
+</code></pre></div>
+
+<h2 id="cameras-and-vision">Cameras and Vision<a class="headerlink" href="#cameras-and-vision" title="Permanent link">&para;</a></h2>
+<h3 id="camera_ustreamer-cam">[camera_ustreamer cam]<a class="headerlink" href="#camera_ustreamer-cam" title="Permanent link">&para;</a></h3>
+<p>This module allows to spawn ustreamer server directly from pick and control camera parameters. Any misconciguration (unsupported control name or value) here will raise config error and prevent machine from starting.</p>
+<p>this is linux specific modulle</p>
+<div class="highlight"><pre><span></span><code>[camera_ustreamer topcam]
+device: /dev/video0
+resolution: 640x480
+port: 8080
+extra_args: -f 15 #framerate
+# all avaiable (supported bby youy camera) controls that can be added here (and values)
+# can be seen with CAM_GET CAM=&lt;name&gt;. It&#39;s output can be pasted here
+# and set/test live with CAM_SET CAM=&lt;name&gt; param=val param2=val
+#white_balance_automatic: 0
+#white_balance_temperature: 4600 
+#[...]
 </code></pre></div>
 
 <h2 id="board-specific-hardware-support">Board specific hardware support<a class="headerlink" href="#board-specific-hardware-support" title="Permanent link">&para;</a></h2>
