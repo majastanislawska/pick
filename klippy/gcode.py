@@ -4,6 +4,7 @@
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
 import os, re, logging, collections, shlex
+import ast
 
 class CommandError(Exception):
     pass
@@ -84,6 +85,8 @@ class GCodeCommand:
                   above=None, below=None):
         return self.get(name, default, parser=float, minval=minval,
                         maxval=maxval, above=above, below=below)
+    def get_ast_eval(self,name,default=sentinel):
+        return self.get(name,default,parser=ast.literal_eval)
 
 # Parse and dispatch G-Code commands
 class GCodeDispatch:

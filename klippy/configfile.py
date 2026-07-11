@@ -4,6 +4,7 @@
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
 import sys, os, glob, re, time, logging, configparser, io
+import ast
 
 error = configparser.Error
 
@@ -116,6 +117,11 @@ class ConfigWrapper:
                      note_valid=True):
         return self.getlists(option, default, seps=(sep,), count=count,
                              parser=float, note_valid=note_valid)
+    def getasteval(self, option, default=sentinel, note_valid=True):
+        try: return ast.literal_eval(self.get(option,default))
+        except ValueError as e:
+            raise error("Option '%s' in section '%s' is not a valid literal"
+                        % (option, self.section))
     def getsection(self, section):
         return ConfigWrapper(self.printer, self.fileconfig,
                              self.access_tracking, section)
