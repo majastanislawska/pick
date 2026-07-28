@@ -1698,14 +1698,47 @@ in case of using PD_SET with voltage not supported by charger, voltage will show
 
 ## Cameras and Vision
 
-### [camera_ustreamer cam]
+The following commands are available when any camera is enabled
+either `[camera_v4l <name>]` or `[camera_ustreamer <name>]` config section is enabled.
+See [PnP Vision](PnP_Vision.md) for setup and calibration workflow.
+Commands are muxed on `CAM=<name>`.
 
 #### CAM_GET
 `CAM_GET CAM=<name>` Dumps available controls (brightnes focus etc) for given camera.
+Those can be pasted into config file.
 
 #### CAM_SET
 `CAM_SET CAM=<name> [param=value] [param2=value2]` Sets value of camera controls. you can pass as many parameters as yoou need. Check `CAM_GET` for names and allowed values.
 Please note that some parameters depend on eachother and order of parameters or combinnation of values sometimes matter. (ie, you need to switch auto_exposure to manual mode before setting exposure_time, same with (auto)_focus)
+
+This command can be also used in 'startup gcode' instead of having thoose vales in configfile.
+
+#### CAM_SNAP
+`CAM_SNAP CAM=<name> [TAG=<string>]`: Capture one processed frame and
+write a JPEG under `/tmp/`.
+
+### [camera_v4l]
+The following commands are specific for `[camera_v4l <name>]` config section.
+
+#### CAM_HUD
+`CAM_HUD CAM=<name> [OVERLAY=<0|1>] [HUD=<0|1>] [FPS=<0|1>]`: Toggle
+stream overlay, crosshair HUD, and FPS text.
+
+#### CAM_CALIB
+`CAM_CALIB CAM=<name> [M=<matrix>] [D=<coeffs>] [R=<matrix>] [V=<matrix>] [A=<alpha>]`: Load or clear (and show) camera calibration matrices and rebuild
+undistort maps. For now you can snatch them from OpenPnP advanced calibration.
+`M`, `D`, `R` and `V` are `camera-matrix`, `distortion-coefficients`, `rectification-matrix`, and `virtual-camera-matrix` respectively
+If `V` is omitted and `A` is set, new virtual camera matrix with principal point forced to frame center and framesize is set depending on `A` (alpha) parameter. It can be then passed as `V=` to spare further recomputation. `A` is not normally needed
+
+It is highly recommended to not use OpenPNP's `virtual-camera-matrix` and generate your own `V` instead.
+
+See opencv `getOptimalNewCameraMatrix` for explanation of those params.
+
+`M`, `D`, `R` and `V` are parsed  by `ast.literal_eval` than subject to conversion to `numpy.array`. needs to be proper python literal but if they contain spaces have to be enclosed by quotes.
+
+This command can be also used in 'startup gcode' instead of having thoose vales in configfile.
+
+### [camera_ustreamer cam]
 
 #### CAM_RESTART
 `CAM_RESTART CAM=<name>` Kills ustreamer for given cammera and respawns it.

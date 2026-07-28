@@ -5267,19 +5267,65 @@ gcode commands use parameter MCU= for same reason.
 
 This module allows to spawn ustreamer server directly from pick and control camera parameters. Any misconciguration (unsupported control name or value) here will raise config error and prevent machine from starting.
 
-this is linux specific modulle
+this is linux specific module
+
 ```
 [camera_ustreamer topcam]
 device: /dev/video0
 resolution: 640x480
 port: 8080
 extra_args: -f 15 #framerate
-# all avaiable (supported bby youy camera) controls that can be added here (and values)
+# all avaiable (supported by your camera) controls that can be added here (and values)
 # can be seen with CAM_GET CAM=<name>. It's output can be pasted here
 # and set/test live with CAM_SET CAM=<name> param=val param2=val
 #white_balance_automatic: 0
-#white_balance_temperature: 4600 
+#white_balance_temperature: 4600
 #[...]
+```
+
+### [camera_u4l cam]
+This module opens Videoo4Linux device directly, hooks it to klipper's reactor,
+from where frames are passed to separate thread that does rectification and processing,
+and from there to own micro http server, from where camera feed can be viewed by any cllient that supports MJPEG streamming ovet http.
+
+Besides undistorting (when camera matrices are provided) it can show overlays and
+some HUD display (currently fps and target in optical center)
+
+this module uses same code (and config) for camera controls (brightnes, exposure etc) as  `camera_ustreamer`, see there foor info.
+
+Calibration matrices are same as Advanced Calibration in OpenPNP,
+except for `virtual_camera_matrix` see [CAM_CALIB](G-Codes.md#CAM_CALIB) for more info.
+
+Value is parsed by `ast.literal_eval` than subject to conversion to `numpy.array`.
+needs to be proper python literal, can be multiline, quotes are not needed.
+
+this is linux specific module
+
+```
+[camera_v4l topcam]
+device: /dev/video0
+port: 8081
+resolution: 1600x1200
+# ... V4L2 controls from CAM_GET ...
+brightness: -64
+gain: 8
+#[..]
+# Calibration matrices (same as Advanced Calibration in OpenPNP)
+camera_matrix: [[1572.0669481517632, 0.0, 799.5],
+                [0.0, 1566.4019983540866, 599.5],
+                [0.0, 0.0, 1.0]]
+dist_coeffs: [0.3480290886097044, -1.7978606385742053, 0.0, 0.0, 2.5043813476126013]
+virtual_camera_matrix: [[1593.49658203125, 0.0, 796.748291015625],
+                        [0.0, 1598.281494140625, 799.1407470703125],
+                        [0.0, 0.0, 1.0]]
+rectification_matrix:  [[0.020765943491393643, -0.9997708453797799, -0.005202868502439099],
+                        [0.9988400717603672, 0.020972358608356438, -0.043343599635173966],
+                        [0.04348445795282051, -0.004301060875483604, 1.0]]
+# pixels_to_mm data: two samples (x,y,z): x & y are measured mm/px on given z plane
+mm_per_px: ((0.0221, 0.0221, -10.3),
+            (0.0216, 0.0216, -7.4))
+#default z plane for pixels_to_mm 
+def_z: -10.3
 ```
 
 ## Board specific hardware support
