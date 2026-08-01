@@ -41,6 +41,9 @@ class VirtualSD:
         for cmd in ['M28', 'M29', 'M30']:
             self.gcode.register_command(cmd, self.cmd_error)
         self.gcode.register_command(
+            "SDCARD_LIST", self.cmd_SDCARD_LIST,
+            desc=self.cmd_SDCARD_LIST_help)
+        self.gcode.register_command(
             "SDCARD_RESET_FILE", self.cmd_SDCARD_RESET_FILE,
             desc=self.cmd_SDCARD_RESET_FILE_help)
         self.gcode.register_command(
@@ -137,6 +140,14 @@ class VirtualSD:
         self.file_position = self.file_size = 0
         self.print_stats.reset()
         self.printer.send_event("virtual_sdcard:reset_file")
+    cmd_SDCARD_LIST_help = "List files on SD Card."
+    def cmd_SDCARD_LIST(self, gcmd):
+        # List SD card
+        files = self.get_file_list(True)
+        gcmd.respond_raw("Begin file list")
+        for fname, fsize in files:
+            gcmd.respond_raw("%s %d" % (fname, fsize))
+        gcmd.respond_raw("End file list")
     cmd_SDCARD_RESET_FILE_help = "Clears a loaded SD File. Stops the print "\
         "if necessary"
     def cmd_SDCARD_RESET_FILE(self, gcmd):
