@@ -24,6 +24,116 @@ import logging
 V4L2_BUF_TYPE_VIDEO_CAPTURE = 1
 V4L2_MEMORY_MMAP = 1
 
+# Helper functions for camera lighting to make it independent from actual klipper driver running a light
+# Camera light: LIGHT= is either brightness 0..1, hex RGB(W), or both.
+# Hex in G-code/config must not use a bare '#" — that is a comment.
+_HEX_COLOR_RE = re.compile(r'(?i)^#?(?:0x)?([0-9a-f]{3}|[0-9a-f]{4}|[0-9a-f]{6}|[0-9a-f]{8})$')
+_FLOAT_RE = re.compile(r'^[+-]?(?:\d+(?:\.\d*)?|\.\d+)$')
+def parse_hex_color(tok):
+    """Parse RGB / RGBW hex → 3- or 4-tuple of 0..1 floats. None if not hex."""
+    if tok is None:
+        return None
+    m = _HEX_COLOR_RE.match(str(tok).strip())
+    if not m:
+        return None
+    h = m.group(1)
+    if len(h) in (3, 4):
+        return tuple(int(c * 2, 16) / 255. for c in h)
+    return tuple(int(h[i:i+2], 16) / 255. for i in range(0, len(h), 2))
+
+def parse_light(value):
+    """Parse LIGHT= token(s) → (s_or_None, color_tuple_or_None).
+    A float in 0..1 is brightness. A 3/4/6/8-digit hex string is RGB(W).
+    Both may appear, separated by comma/space: '0.8,F80' or 'FFF 0.5'.
+    """
+    if value is None or value == '':
+        return None, None
+    if isinstance(value, bool):
+        raise ValueError("LIGHT: unexpected boolean")
+    if isinstance(value, (int, float)):
+        s = float(value)
+        if s < 0. or s > 1.:
+            raise ValueError("LIGHT brightness must be in 0..1 (got %s)" % (value,))
+        return s, None
+    s = color = None
+    for tok in re.split(r'[\s,;]+', str(value).strip()):
+        if not tok:
+            continue
+        if _FLOAT_RE.match(tok):
+            val = float(tok)
+            if val < 0. or val > 1.:
+                raise ValueError("LIGHT brightness must be in 0..1 (got %s)" % (tok,))
+            s = val
+            continue
+        c = parse_hex_color(tok)
+        if c is not None:
+            color = c
+            continue
+        raise ValueError(
+            "cannot parse LIGHT token %r (want 0..1 or hex RGB/RGBW)" % (tok,))
+    return s, color
+
+def format_hex_color(color):
+    if not color:
+        return None
+    return ''.join('%02X' % int(c * 255. + .5) for c in color)
+
+def channels_str(ch):
+    return ''.join(c for i, c in enumerate('RGBW') if i in ch) or '-'
+
+def probe_led_channels(led):
+    """Which RGBW indices the LED object actually drives."""
+    pins = getattr(led, 'pins', None)
+    if pins:
+        return frozenset(i for i, _pin in pins)
+    cm = getattr(led, 'color_map', None)
+    if not cm:
+        return frozenset()
+    ch = set()
+    for item in cm:
+        if isinstance(item, int):
+            ch.add(item)          # pca9632: [R,G,B,W] indices
+        else:
+            ch.add(item[1][1])    # neopixel: (cdidx, (lidx, cidx))
+    return frozenset(ch)
+
+def map_rgb_to_led(color, s, ch):
+    """Scale color by s and fold onto the channels the hardware has.
+    RGB hex (3-tuple): on RGBW extract common white onto W.
+    RGBW hex (4-tuple): respect the given W; if hardware has no W, fold
+    it back into RGB. White-only PWM uses max(R,G,B,W)*s on W.
+    """
+    s = max(0., min(1., float(s)))
+    r = g = b = 0.
+    w_in = None
+    if color:
+        r, g, b = (max(0., min(1., float(c))) for c in color[:3])
+        if len(color) > 3:
+            w_in = max(0., min(1., float(color[3])))
+    r, g, b = r * s, g * s, b * s
+    w = 0. if w_in is None else w_in * s
+    has_r, has_g, has_b, has_w = (i in ch for i in range(4))
+    if has_w and not (has_r or has_g or has_b):
+        return (0., 0., 0., max(r, g, b, w))
+    if not has_w:
+        return (
+            min(1., r + w) if has_r else 0.,
+            min(1., g + w) if has_g else 0.,
+            min(1., b + w) if has_b else 0.,
+            0.)
+    if w_in is None:
+        extra = min(c for c, h in ((r, has_r), (g, has_g), (b, has_b)) if h)
+        r, g, b, w = (
+            (r - extra) if has_r else 0.,
+            (g - extra) if has_g else 0.,
+            (b - extra) if has_b else 0.,
+            extra)
+    return (
+        r if has_r else 0.,
+        g if has_g else 0.,
+        b if has_b else 0.,
+        w if has_w else 0.)
+
 class ThreadedHTTPServer(socketserver.ThreadingMixIn, HTTPServer):
     daemon_threads = True
     allow_reuse_address = True
@@ -166,7 +276,7 @@ class V4L2Camera:
         self.name = config.get_name().split()[-1]
         self.device = config.get('device', '/dev/video0')
         self.resolution = config.get('resolution', '640x480')
-        # looking: up = fixed bottom camera at nozzle; down = head-mounted topcam
+        # looking: up = fixed bottom camera to look at nozzle; down = head-mounted topcam
         # flips image-Y sign in pixels_to_mm_offset (see there).
         self.looking_up = config.getchoice(
             'looking', {'up': True, 'down': False}, default='down')
@@ -177,6 +287,27 @@ class V4L2Camera:
             self.camera_z = config.getfloat('camera_z', None)
         self.httpaddr = config.get('http_addr', '0.0.0.0')
         self.httpport = config.getint('http_port', 8081)
+        self.light_name = config.get('light', None)
+        self.light = None
+        self.light_channels = frozenset()
+        self.light_s_default = config.getfloat('light_s', 1., minval=0., maxval=1.)
+        self.light_idle = config.getfloat('light_idle', 0., minval=0., maxval=1.)
+        self.light_settle = config.getfloat('light_settle', 0.1, minval=0.)
+        self.light_hold = config.getfloat('light_hold', 5., minval=0.)
+        color_cfg = config.get('light_color', 'FFF')
+        try:
+            _s, color = parse_light(color_cfg)
+        except ValueError as e:
+            raise config.error("[camera_v4l %s] light_color: %s" % (self.name, e))
+        if color is None:
+            raise config.error(
+                "[camera_v4l %s] light_color must be hex RGB(W), got %r"
+                % (self.name, color_cfg))
+        self._light_color = color
+        self._light_s = self.light_s_default
+        self._output_s = 0.
+        self._last_rgbw = None
+        self._light_hold_timer = None
         self.settings={}
         try: self.controls = self._get_supported_v4l2_controls()
         except subprocess.CalledProcessError as e:
@@ -223,12 +354,24 @@ class V4L2Camera:
                         self.cmd_CAM_GET, desc=self.cmd_CAM_GET_help)
         gcode.register_mux_command('CAM_HUD', 'CAM', self.name,
                         self.cmd_CAM_HUD, desc=self.cmd_CAM_HUD_help)
+        gcode.register_mux_command('CAM_LIGHT', 'CAM', self.name, 
+                        self.cmd_CAM_LIGHT, desc=self.cmd_CAM_LIGHT_help)
         gcode.register_mux_command('CAM_CALIB', 'CAM', self.name,
                         self.cmd_CAM_CALIB, desc=self.cmd_CAM_CALIB_help)
 
     def _handle_connect(self):
-        self.vision = self.printer.lookup_object('pnp_vision')
-        self.vision.register_camera(self.name,self)
+        if self.light_name:
+            self.light = self.printer.lookup_object(self.light_name)
+            if not hasattr(self.light, 'led_helper'):
+                raise self.printer.config_error(
+                    "[camera_v4l %s] light '%s' has no led_helper"
+                    % (self.name, self.light_name))
+            self.light_channels = probe_led_channels(self.light)
+            logging.info(
+                "[camera_v4l %s]: light=%s channels=%s color=%s s=%s"
+                % (self.name, self.light_name,
+                   channels_str(self.light_channels),
+                   format_hex_color(self._light_color), self._light_s))
         (self.frame_width, self.frame_height) = map(int, self.resolution.split('x'))
         try:
             self.fd = os.open(self.device, os.O_RDWR | os.O_NONBLOCK, 0)
@@ -290,6 +433,7 @@ class V4L2Camera:
         return self._handle_shutdown()
     def _handle_shutdown(self):
         logging.info(f"Vision [{self.name}]:_handle_shutdown {self.httpaddr}:{self.httpport}")
+        self._cancel_light_hold()
         if self.server is not None:
             try:
                 self.server.shutdown()
@@ -385,6 +529,83 @@ class V4L2Camera:
         self.hud_on=gcmd.get('HUD', str(self.hud_on)).lower() in ['1','t','true','on']
         self.fps_on=gcmd.get('FPS', str(self.fps_on)).lower() in ['1','t','true','on']
 
+
+    def _cancel_light_hold(self):
+        if self._light_hold_timer is not None:
+            self.reactor.unregister_timer(self._light_hold_timer)
+            self._light_hold_timer = None
+
+    def _bump_light_hold(self):
+        waketime = self.reactor.monotonic() + self.light_hold
+        if self._light_hold_timer is None:
+            self._light_hold_timer = self.reactor.register_timer(
+                self._light_hold_event, waketime)
+        else:
+            self.reactor.update_timer(self._light_hold_timer, waketime)
+
+    def _light_hold_event(self, eventtime):
+        self._light_hold_timer = None
+        self.set_light(output_s=self.light_idle)
+        return self.reactor.NEVER
+
+    def set_light(self, s=None, color=None, output_s=None):
+        """Remember s/color and transmit. output_s overrides level without
+        changing the remembered working brightness (used for idle / exclusive)."""
+        if s is not None:
+            self._light_s = max(0., min(1., float(s)))
+        if color is not None:
+            self._light_color = color
+        level = self._light_s if output_s is None else max(0., min(1., float(output_s)))
+        if self.light is None:
+            if level > 0.:
+                raise self.printer.command_error(
+                    "Camera [%s] has no light: configured" % (self.name,))
+            self._output_s = level
+            return False
+        rgbw = map_rgb_to_led(self._light_color, level, self.light_channels)
+        if rgbw == self._last_rgbw and level == self._output_s:
+            return False
+        self.light.led_helper._set_color(None, rgbw)
+        self.light.led_helper._check_transmit(None)
+        self._last_rgbw = rgbw
+        self._output_s = level
+        return True
+
+    def acquire_light(self, s, color, hold=True, settle=True):
+        changed = self.set_light(s=s, color=color)
+        want = self._output_s
+        if settle and changed and want > 0. and self.light_settle > 0.:
+            self.reactor.pause(self.reactor.monotonic() + self.light_settle)
+        if hold and want > 0. and self.light_hold > 0.:
+            self._bump_light_hold()
+        else:
+            self._cancel_light_hold()
+
+    cmd_CAM_LIGHT_help = "Camera light: LIGHT=<0..1 and/or hex RGB>"
+    def cmd_CAM_LIGHT(self, gcmd):
+        spec = gcmd.get('LIGHT', None)
+        if spec is None:
+            gcmd.respond_info(
+                "CAM_LIGHT [%s] light=%s channels=%s s=%.3f output=%.3f color=%s"
+                % (self.name,
+                   self.light_name or '(none)',
+                   channels_str(self.light_channels),
+                   self._light_s, self._output_s,
+                   format_hex_color(self._light_color)))
+            return
+        try:
+            s, color = parse_light(spec)
+        except ValueError as e:
+            raise gcmd.error(str(e))
+        self.acquire_light(s, color, hold=False, settle=False)
+        gcmd.respond_info(
+            "CAM_LIGHT [%s] channels=%s s=%.3f output=%.3f color=%s rgbw=%s"
+            % (self.name, channels_str(self.light_channels),
+               self._light_s, self._output_s,
+               format_hex_color(self._light_color),
+               None if self._last_rgbw is None else
+               tuple(round(c, 3) for c in self._last_rgbw)))
+
     cmd_CAM_CALIB_help = "Configure camera rectification matrices"
     def cmd_CAM_CALIB(self, gcmd):
         class sentinel:
@@ -435,6 +656,19 @@ class V4L2Camera:
         except Exception as e:
             raise gcmd.error(f"Error in generate_maps {e}")
 
+    def get_mmpx_on_z(self, z):
+        """
+        Positive mm/px magnitudes for motion prediction.
+        Config and calib store +/+ ; image-Y flip is applied in predict/px→mm.
+        """
+        if self.mm_per_px is not None and len(self.mm_per_px) == 2:
+            (x1,y1,z1),(x2,y2,z2)= self.mm_per_px
+            k = ((z - z1) / (z2 - z1)) if abs(z2 - z1) > 0.001 else 0
+            upp_x = x1 + k * (x2 - x1)
+            upp_y = y1 + k * (y2 - y1)
+            return abs(float(upp_x)), abs(float(upp_y))
+        return 0., 0.
+
     def pixels_to_mm_offset(self, x_px, y_px, z_working_height=None):
         """
         Pixel offset from principal point → machine XY offset (mm).
@@ -444,16 +678,12 @@ class V4L2Camera:
              looking=up   (bottom) → +dy_px * upp_y
         """
         if self.virt_matrix is None or self.mm_per_px is None or len(self.mm_per_px)!=2:
-            return x_px, y_px
+            return 0., 0.
         if z_working_height is None:
             z_working_height=self.def_z_plane
         dx_px = x_px - self.virt_matrix[0, 2]
         dy_px = y_px - self.virt_matrix[1, 2]
-        (x1,y1,z1),(x2,y2,z2)= self.mm_per_px
-        k = ((z_working_height - z1) / (z2 - z1)) if abs(z2 - z1) > 0.001 else 0
-        upp_x = x1 + k * (x2 - x1)
-        upp_y = y1 + k * (y2 - y1)
-        upp_x, upp_y = abs(float(upp_x)), abs(float(upp_y))
+        upp_x, upp_y = self.get_mmpx_on_z(z_working_height)
         delta_x_mm = float(dx_px) * upp_x
         # down-looking: image +Y is machine −Y; up-looking: same sense
         y_sign = 1.0 if self.looking_up else -1.0
