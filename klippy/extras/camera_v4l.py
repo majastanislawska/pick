@@ -166,7 +166,15 @@ class V4L2Camera:
         self.name = config.get_name().split()[-1]
         self.device = config.get('device', '/dev/video0')
         self.resolution = config.get('resolution', '640x480')
-        self.loookingup = config.getchoice('looking',{'up':True,'down':False},default=False)
+        # looking: up = fixed bottom camera at nozzle; down = head-mounted topcam
+        # flips image-Y sign in pixels_to_mm_offset (see there).
+        self.looking_up = config.getchoice(
+            'looking', {'up': True, 'down': False}, default='down')
+        if self.looking_up:
+            #Fixed physical on the frame coordinates of up-facing camera
+            self.camera_x = config.getfloat('camera_x', None)
+            self.camera_y = config.getfloat('camera_y', None)
+            self.camera_z = config.getfloat('camera_z', None)
         self.httpaddr = config.get('http_addr', '0.0.0.0')
         self.httpport = config.getint('http_port', 8081)
         self.settings={}
@@ -428,6 +436,13 @@ class V4L2Camera:
             raise gcmd.error(f"Error in generate_maps {e}")
 
     def pixels_to_mm_offset(self, x_px, y_px, z_working_height=None):
+        """
+        Pixel offset from principal point → machine XY offset (mm).
+        mm_per_px samples are positive magnitudes; axis signs:
+          X: always +dx_px * upp_x
+          Y: looking=down (topcam) → -dy_px * upp_y  (image Y down vs machine Y)
+             looking=up   (bottom) → +dy_px * upp_y
+        """
         if self.virt_matrix is None or self.mm_per_px is None or len(self.mm_per_px)!=2:
             return x_px, y_px
         if z_working_height is None:
@@ -440,7 +455,9 @@ class V4L2Camera:
         upp_y = y1 + k * (y2 - y1)
         upp_x, upp_y = abs(float(upp_x)), abs(float(upp_y))
         delta_x_mm = float(dx_px) * upp_x
-        delta_y_mm = -float(dy_px) * upp_y
+        # down-looking: image +Y is machine −Y; up-looking: same sense
+        y_sign = 1.0 if self.looking_up else -1.0
+        delta_y_mm = y_sign * float(dy_px) * upp_y
         return float(delta_x_mm), float(delta_y_mm)
 
 def load_config_prefix(config):
