@@ -139,7 +139,15 @@ class VisionWorker(threading.Thread):
                 self.frame_h, self.frame_w = img.shape[:2]
                 if self.parent.overlay_on and self.frameoverlay is not None:
                     with self.overlay_lock:
-                        img=cv2.addWeighted(img, 1-self.overlayalpha, self.frameoverlay, self.overlayalpha, 0)
+                        ov = self.frameoverlay
+                        if ov is not None and ov.shape[:2] == img.shape[:2]:
+                            if ov.ndim != img.ndim:
+                                ov = (cv2.cvtColor(ov, cv2.COLOR_GRAY2BGR)
+                                      if ov.ndim == 2 else ov)
+                            if ov.shape == img.shape:
+                                img=cv2.addWeighted(img, 1-self.overlayalpha, ov, self.overlayalpha, 0)
+                        else:
+                            self.frameoverlay = None
                 if self.parent.hud_on:
                     self.hud(img, self.frame_w,self.frame_h,int(self.cx),int(self.cy))
                 if self.parent.fps_on:
