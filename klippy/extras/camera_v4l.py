@@ -715,5 +715,14 @@ class V4L2Camera:
         delta_y_mm = y_sign * float(dy_px) * upp_y
         return float(delta_x_mm), float(delta_y_mm)
 
+    def get_status(self, eventtime):
+        return {
+            'on': self.vision_worker_thread is not None,
+            'cam_res': self.resolution,
+            'light_name': self.light_name,
+            'light_rgb': format_hex_color(self._last_rgbw),
+            'light_val':self._output_s,
+        }
+
 def load_config_prefix(config):
     return V4L2Camera(config)
