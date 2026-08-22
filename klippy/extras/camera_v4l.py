@@ -351,9 +351,11 @@ class V4L2Camera:
         self.fps_divider = 3 #pass only Nth frame to stream
         self.lastevt=0
         self.heatmap_on=True
-        self.overlay_on =True
-        self.hud_on=True
-        self.fps_on=True
+        self.hud_on = config.getboolean('hud_hud', True)
+        self.fps_on = config.getboolean('hud_fps', True)
+        self.overlay_on = config.getboolean('hud_overlay', True)
+        self.overlay_timeout = config.getfloat('hud_overlay_timeout', 10., minval=0.)
+        self._overlay_timer = None
         width, height = map(int, self.resolution.split('x'))
         self.fps_divider = config.getint('fps_divider',3) #pass only Nth frame to stream
         cm_list = config.getasteval('camera_matrix', [[float(width), 0.0, width/2], [0.0, float(height), height/2], [0.0, 0.0, 1.0]])
@@ -379,7 +381,7 @@ class V4L2Camera:
                         self.cmd_CAM_GET, desc=self.cmd_CAM_GET_help)
         gcode.register_mux_command('CAM_HUD', 'CAM', self.name,
                         self.cmd_CAM_HUD, desc=self.cmd_CAM_HUD_help)
-        gcode.register_mux_command('CAM_LIGHT', 'CAM', self.name, 
+        gcode.register_mux_command('CAM_LIGHT', 'CAM', self.name,
                         self.cmd_CAM_LIGHT, desc=self.cmd_CAM_LIGHT_help)
         gcode.register_mux_command('CAM_CALIB', 'CAM', self.name,
                         self.cmd_CAM_CALIB, desc=self.cmd_CAM_CALIB_help)
@@ -533,7 +535,23 @@ class V4L2Camera:
         return self.vision_worker_thread.get_snapshot()
 
     def set_overlay(self, overlay):
+        if overlay is not None:
+            waketime = self.reactor.monotonic() + self.overlay_timeout
+            if self._overlay_timer is None:
+                self._overlay_timer = self.reactor.register_timer(
+                    self._overlay_callback, waketime)
+            else:
+                self.reactor.update_timer(self._overlay_timer, waketime)
+        else:
+            if self._overlay_timer is not None:
+                self.reactor.unregister_timer(self._overlay_timer)
+                self._overlay_timer = None
         return self.vision_worker_thread.set_overlay(overlay)
+
+    def _overlay_callback(self, eventtime):
+        self._overlay_timer = None
+        self.vision_worker_thread.set_overlay(None)
+        return self.reactor.NEVER
 
     cmd_CAM_SNAP_help = "Takes a snapshot"
     def cmd_CAM_SNAP(self, gcmd):
@@ -551,9 +569,9 @@ class V4L2Camera:
     cmd_CAM_HUD_help = "Options for camera HUD and overlay"
     def cmd_CAM_HUD(self, gcmd):
         self.overlay_on=gcmd.get('OVERLAY', str(self.overlay_on)).lower() in ['1','t','true','on']
+        self.overlay_timeout=gcmd.get_float('TIMEOUT',self.overlay_timeout, minval=0.)
         self.hud_on=gcmd.get('HUD', str(self.hud_on)).lower() in ['1','t','true','on']
         self.fps_on=gcmd.get('FPS', str(self.fps_on)).lower() in ['1','t','true','on']
-
 
     def _cancel_light_hold(self):
         if self._light_hold_timer is not None:
