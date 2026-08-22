@@ -44,6 +44,7 @@ def parse_hex_color(tok):
 def parse_light(value):
     """Parse LIGHT= token(s) → (s_or_None, color_tuple_or_None).
     A float in 0..1 is brightness. A 3/4/6/8-digit hex string is RGB(W).
+    if string starts with K rest is white temperature
     Both may appear, separated by comma/space: '0.8,F80' or 'FFF 0.5'.
     """
     if value is None or value == '':
@@ -65,12 +66,17 @@ def parse_light(value):
                 raise ValueError("LIGHT brightness must be in 0..1 (got %s)" % (tok,))
             s = val
             continue
+        if tok[0] in ['k','K']:
+            c=kelvin_to_rgb(float(tok[1:]))
+            if c is not None:
+                color = c
+                continue
         c = parse_hex_color(tok)
         if c is not None:
             color = c
             continue
         raise ValueError(
-            "cannot parse LIGHT token %r (want 0..1 or hex RGB/RGBW)" % (tok,))
+            "cannot parse LIGHT token %r (want 0..1 or hex RGB/RGBW or K<temp>)" % (tok,))
     return s, color
 
 def format_hex_color(color):
@@ -133,6 +139,25 @@ def map_rgb_to_led(color, s, ch):
         g if has_g else 0.,
         b if has_b else 0.,
         w if has_w else 0.)
+
+def kelvin_to_rgb(kelvin: float):
+    """
+    Convert White light temperature (1000K - 6600K) to RGB HEX.
+    based on http://www.tannerhelland.com/4435/convert-temperature-rgb-algorithm-code/
+    """
+    #can do to 40000K, fic clip and uncomment if/else
+    #no point though as cameras can do whitebalance to 6500 max
+    temp = numpy.clip(kelvin,1000.0,6600.0) / 100.0
+    tt=temp - 60.0
+    #if temp<=66.:
+    r = 1.
+    g = numpy.clip(0.390081578769 * numpy.log(temp) - 0.631841443788,0.,1.)
+    b = 0. if temp <= 19.0 else numpy.clip(0.54320678911 * numpy.log(temp - 10.0) - 1.19625408914 , 0., 1.)
+    # else:
+        # r = nunpy.clip(1.292936186062 * ((temp - 60.0) ** -0.1332047592), 0., 1.)
+        # g = nunpy.clip(1.129890860895 * ((temp - 60.0) ** -0.0755148492), 0., 1.)
+        # b = 1
+    return (r,g,b)
 
 class ThreadedHTTPServer(socketserver.ThreadingMixIn, HTTPServer):
     daemon_threads = True
