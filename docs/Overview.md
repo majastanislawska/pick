@@ -45,6 +45,8 @@ communication with the Klipper developers.
 - [Pressure advance](Pressure_Advance.md): Calibrate extruder
   pressure.
 - [G-Codes](G-Codes.md): Information on commands supported by Klipper.
+- [PnP Vision](PnP_Vision.md): V4L2 cameras, detection pipelines,
+  mm/pixel calibration, and vision XY home on fiducials.
 - [Command Templates](Command_Templates.md): G-Code macros and
   conditional evaluation.
   - [Status Reference](Status_Reference.md): Information available to

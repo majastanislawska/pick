@@ -216,7 +216,7 @@ class VisionWorker(threading.Thread):
         if (camera_matrix is None or dist_coeffs  is None or
             rectification_matrix is None or virtual_camera_matrix is None):
                 self.map1, self.map2 = None,None
-                raise Exception('clearing_maps')
+                return 'clearing_maps'
         self.cx = virtual_camera_matrix[0, 2]
         self.cy = virtual_camera_matrix[1, 2]
         self.frame_w=int(virtual_camera_matrix[0, 0])
@@ -224,6 +224,7 @@ class VisionWorker(threading.Thread):
         self.map1, self.map2 = cv2.initUndistortRectifyMap(
             camera_matrix, dist_coeffs, rectification_matrix, virtual_camera_matrix,
             (self.frame_w, self.frame_h), cv2.CV_16SC2 )
+        return "maps generated ok"
 
     def push_frame(self, msg):
         try: self.frame_queue.put_nowait(msg)
@@ -271,7 +272,6 @@ class VisionWorker(threading.Thread):
                 if req is not None:
                     req.complete((img.copy(),eventtime))
                     continue
-                self.frame_h, self.frame_w = img.shape[:2]
                 if self.parent.overlay_on and self.frameoverlay is not None:
                     with self.overlay_lock:
                         ov = self.frameoverlay
@@ -298,7 +298,8 @@ class V4L2Camera:
     def __init__(self, config):
         self.printer = config.get_printer()
         self.reactor = self.printer.get_reactor()
-        self.name = config.get_name().split()[-1]
+        self.name = config.get_name()
+        self.short_name = config.get_name().split()[-1]
         self.device = config.get('device', '/dev/video0')
         self.resolution = config.get('resolution', '640x480')
         # looking: up = fixed bottom camera to look at nozzle; down = head-mounted topcam
@@ -323,10 +324,10 @@ class V4L2Camera:
         try:
             _s, color = parse_light(color_cfg)
         except ValueError as e:
-            raise config.error("[camera_v4l %s] light_color: %s" % (self.name, e))
+            raise config.error("[%s] light_color: %s" % (self.name, e))
         if color is None:
             raise config.error(
-                "[camera_v4l %s] light_color must be hex RGB(W), got %r"
+                "[%s] light_color must be hex RGB(W), got %r"
                 % (self.name, color_cfg))
         self._light_color = color
         self._light_s = self.light_s_default
@@ -336,10 +337,10 @@ class V4L2Camera:
         self.settings={}
         try: self.controls = self._get_supported_v4l2_controls()
         except subprocess.CalledProcessError as e:
-            raise config.error(f"[camera_v4l {self.name}] Error: {e.returncode}: {str(e.stderr)}")
-        # logging.info(f"[camera_v4l {self.name}]: Detected V4L2 controls: {self.controls}")
+            raise config.error(f"[{self.name}] Error: {e.returncode}: {str(e.stderr)}")
+        # logging.info(f"[camera_v4l {self.short_name}]: Detected V4L2 controls: {self.controls}")
         for ctrl_name, (value, ctrl_type_info, details) in self.controls.items():
-            # logging.info(f"[camera_v4l {self.name}]: Detected V4L2 control: {ctrl_name} = {value}  #({ctrl_type_info}) {details}")
+            # logging.info(f"[{self.name}]: Detected V4L2 control: {ctrl_name} = {value}  #({ctrl_type_info}) {details}")
             val = config.get(ctrl_name, None)
             if val is not None:
                 self.settings[ctrl_name] = val
@@ -364,6 +365,8 @@ class V4L2Camera:
         self.dist_coeffs = numpy.array(dist_list, dtype=numpy.float32)
         virtual_camera_matrix_list = config.getasteval('virtual_camera_matrix', [[width, 0.0, width//2], [0.0,height, height//2], [0.0, 0.0, 1.0]])
         self.virt_matrix = numpy.array(virtual_camera_matrix_list, dtype=numpy.float32).reshape((3, 3))
+        self.cx=self.virt_matrix[0, 2]
+        self.cy=self.virt_matrix[1, 2]
         rectification_matrix_list = config.getasteval('rectification_matrix', [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]])
         self.rectif_matrix = numpy.array(rectification_matrix_list, dtype=numpy.float32).reshape((3, 3))
         self.mm_per_px=config.getasteval('mm_per_px', None)
@@ -373,17 +376,17 @@ class V4L2Camera:
         self.printer.register_event_handler("klippy:disconnect",  self._handle_disconnect)
         self.printer.register_event_handler("klippy:shutdown", self._handle_shutdown)
         gcode = self.printer.lookup_object('gcode')
-        gcode.register_mux_command('CAM_SNAP', "CAM", self.name,
+        gcode.register_mux_command('CAM_SNAP', "CAM", self.short_name,
                         self.cmd_CAM_SNAP, desc=self.cmd_CAM_SNAP_help)
-        gcode.register_mux_command('CAM_SET', 'CAM', self.name,
+        gcode.register_mux_command('CAM_SET', 'CAM', self.short_name,
                         self.cmd_CAM_SET, desc=self.cmd_CAM_SET_help)
-        gcode.register_mux_command('CAM_GET', 'CAM', self.name,
+        gcode.register_mux_command('CAM_GET', 'CAM', self.short_name,
                         self.cmd_CAM_GET, desc=self.cmd_CAM_GET_help)
-        gcode.register_mux_command('CAM_HUD', 'CAM', self.name,
+        gcode.register_mux_command('CAM_HUD', 'CAM', self.short_name,
                         self.cmd_CAM_HUD, desc=self.cmd_CAM_HUD_help)
-        gcode.register_mux_command('CAM_LIGHT', 'CAM', self.name,
+        gcode.register_mux_command('CAM_LIGHT', 'CAM', self.short_name,
                         self.cmd_CAM_LIGHT, desc=self.cmd_CAM_LIGHT_help)
-        gcode.register_mux_command('CAM_CALIB', 'CAM', self.name,
+        gcode.register_mux_command('CAM_CALIB', 'CAM', self.short_name,
                         self.cmd_CAM_CALIB, desc=self.cmd_CAM_CALIB_help)
 
     def _handle_connect(self):
@@ -391,11 +394,11 @@ class V4L2Camera:
             self.light = self.printer.lookup_object(self.light_name)
             if not hasattr(self.light, 'led_helper'):
                 raise self.printer.config_error(
-                    "[camera_v4l %s] light '%s' has no led_helper"
+                    "[%s] light '%s' has no led_helper"
                     % (self.name, self.light_name))
             self.light_channels = probe_led_channels(self.light)
             logging.info(
-                "[camera_v4l %s]: light=%s channels=%s color=%s s=%s"
+                "[%s]: light=%s channels=%s color=%s s=%s"
                 % (self.name, self.light_name,
                    channels_str(self.light_channels),
                    format_hex_color(self._light_color), self._light_s))
@@ -431,14 +434,13 @@ class V4L2Camera:
                 reactor.pause(reactor.monotonic() + .250) # Wait 250ms for device to initialize
                 self._apply_v4l2_settings(self.settings)
         except Exception as e:
-            raise self.printer.config_error("cam %s: v4l error: %s"% (self.name, e))
+            raise self.printer.config_error("cam %s: v4l error: %s"% (self.short_name, e))
         # Start HTTP micro-serwer
         self.server = ThreadedHTTPServer((self.httpaddr, self.httpport), MJPEGHandler)
         threading.Thread(target=self.server.serve_forever, daemon=True).start()
         self.vision_worker_thread = VisionWorker(self) #self as parent
         threading.Thread(target=self.vision_worker_thread.run, daemon=True).start()
-        self.vision_worker_thread.generate_maps(self.camera_matrix,self.dist_coeffs,
-            self.rectif_matrix,self.virt_matrix)
+        self.generate_maps()
         self.fd_handle=self.reactor.register_fd(self.fd, self._handle_camera_fd)
 
     def _handle_camera_fd(self, eventtime):
@@ -456,18 +458,18 @@ class V4L2Camera:
             logging.error(f"_handle_camera_fd {e}")
 
     def _handle_disconnect(self):
-        logging.info(f"Vision [{self.name}]:_handle_disconnect {self.httpaddr}:{self.httpport}")
+        logging.info(f"Vision [{self.short_name}]:_handle_disconnect {self.httpaddr}:{self.httpport}")
         return self._handle_shutdown()
     def _handle_shutdown(self):
-        logging.info(f"Vision [{self.name}]:_handle_shutdown {self.httpaddr}:{self.httpport}")
+        logging.info(f"Vision [{self.short_name}]:_handle_shutdown {self.httpaddr}:{self.httpport}")
         self._cancel_light_hold()
         if self.server is not None:
             try:
                 self.server.shutdown()
                 self.server.server_close()
-                logging.info(f"Vision [{self.name}]: MJPEG Server {self.httpaddr}:{self.httpport} shutdown.")
+                logging.info(f"Vision [{self.short_name}]: MJPEG Server {self.httpaddr}:{self.httpport} shutdown.")
             except Exception as e:
-                logging.info(f"Vision [{self.name}]: Error on shutdown: {str(e)}")
+                logging.info(f"Vision [{self.short_name}]: Error on shutdown: {str(e)}")
             self.server = None
         if self.fd_handle is not None:
             try: self.reactor.unregister_fd(self.fd_handle)
@@ -477,7 +479,7 @@ class V4L2Camera:
                 type_buf = v4l2.v4l2_buf_type(V4L2_BUF_TYPE_VIDEO_CAPTURE)
                 fcntl.ioctl(self.fd, v4l2.VIDIOC_STREAMOFF, type_buf)
             except Exception as e:
-                logging.info(f"Vision [{self.name}]: Błąd podczas zamykania fd: {str(e)}")
+                logging.info(f"Vision [{self.short_name}]: Błąd podczas zamykania fd: {str(e)}")
             os.close(self.fd)
             self.fd = None
         self.buffers = []
@@ -487,7 +489,7 @@ class V4L2Camera:
         pattern = re.compile(r'^\s*([a-zA-Z0-9_]+)\s+(.+)\s+\((.+)\)\s+:\s+(.*)$')
         controls = {}
         for line in output.splitlines():
-            # logging.info(f"[camera_v4l {self.name}]: Parsing line: {line}")
+            # logging.info(f"[{self.name}]: Parsing line: {line}")
             match = pattern.match(line)
             if match:
                 ctrl_name = match.group(1)
@@ -495,7 +497,7 @@ class V4L2Camera:
                 ctrl_type_info = match.group(3).strip()
                 ctrl_details = match.group(4).strip()
                 val_match = re.search(r'\bvalue=(-?\d+)\b', ctrl_details) #remove value=.* from ctrl_details
-                # logging.info(f"[camera_v4l {self.name}] match {ctrl_name} ")
+                # logging.info(f"[{self.name}] match {ctrl_name} ")
                 if val_match:
                     value = val_match.group(1)
                     details = re.sub(r'\bvalue=-?\d+\b', '', ctrl_details).strip()
@@ -507,12 +509,12 @@ class V4L2Camera:
         args = ["v4l2-ctl", "-d", self.device]
         for ctrl_name, val in params.items():
             args.extend(["-c", f"{ctrl_name}={val}"])
-        logging.info(f"Setting V4L2 parameters for [{self.name}]: {' '.join(args)}")
+        logging.info(f"Setting V4L2 parameters for [{self.short_name}]: {' '.join(args)}")
         return subprocess.check_output(args, stderr=subprocess.PIPE)
 
     cmd_CAM_GET_help = "Retrieves current V4L2 camera configuration"
     def cmd_CAM_GET(self, gcmd):
-        gcmd.respond_info(f"=== Konfiguracja V4L2 wygenerowana dla [{self.name}] ===")
+        gcmd.respond_info(f"=== v4l2-ctl config for [{self.name}] ===")
         #take it from system again
         try: self.controls = self._get_supported_v4l2_controls()
         except subprocess.CalledProcessError as e:
@@ -556,10 +558,9 @@ class V4L2Camera:
     cmd_CAM_SNAP_help = "Takes a snapshot"
     def cmd_CAM_SNAP(self, gcmd):
         tag=gcmd.get("TAG", None)  # optional tag for filename
-        gcmd.respond_info(f"Taking snapshot from [{self.name}]...")
         try:
             img,_ = self.get_snapshot()
-            filename=datetime.datetime.now().strftime(f"/tmp/pnp_{self.name}_{tag}_%Y%m%d_%H%M%S.jpeg")
+            filename=datetime.datetime.now().strftime(f"/tmp/pnp_{self.short_name}_{tag}_%Y%m%d_%H%M%S.jpeg")
             cv2.imwrite(filename, img)
             gcmd.respond_info(f"Snapshot saved to {filename}.")
         except RuntimeError as e:
@@ -630,8 +631,7 @@ class V4L2Camera:
         if spec is None:
             gcmd.respond_info(
                 "CAM_LIGHT [%s] light=%s channels=%s s=%.3f output=%.3f color=%s"
-                % (self.name,
-                   self.light_name or '(none)',
+                % (self.name, self.light_name or '(none)',
                    channels_str(self.light_channels),
                    self._light_s, self._output_s,
                    format_hex_color(self._light_color)))
@@ -685,19 +685,16 @@ class V4L2Camera:
                 alpha=a, newImgSize=(self.frame_width, self.frame_height))
             self.virt_matrix[0, 2] = self.virt_matrix[0, 0] / 2.0  # force cx to center
             self.virt_matrix[1, 2] = self.virt_matrix[1, 1] / 2.0  # force cy to center
-            cx = self.virt_matrix[0, 2]
-            cy = self.virt_matrix[1, 2]
-            gcmd.respond_info(f"ROI={roi} c={(cx,cy)}")
+            self.cx = self.virt_matrix[0, 2]
+            self.cy = self.virt_matrix[1, 2]
+            gcmd.respond_info(f"ROI={roi} c={(self.cx,self.cy)}")
         gcmd.respond_info(f'V="{None if self.virt_matrix is None else self.virt_matrix.tolist()}"')
-        if (self.camera_matrix is None or self.dist_coeffs is None or
-            self.rectif_matrix is None or self.virt_matrix is None):
-            gcmd.respond_info(f"Not enough params to generate maps.")
-            return
-        try: self.vision_worker_thread.generate_maps(
-                self.camera_matrix,self.dist_coeffs,
-                self.rectif_matrix,self.virt_matrix)
-        except Exception as e:
-            raise gcmd.error(f"Error in generate_maps {e}")
+        gcmd.respond_info(self.generate_maps())
+
+    def generate_maps(self):
+        return self.vision_worker_thread.generate_maps(
+            self.camera_matrix,self.dist_coeffs,
+            self.rectif_matrix,self.virt_matrix)
 
     def get_mmpx_on_z(self, z):
         """

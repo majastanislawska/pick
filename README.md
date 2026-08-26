@@ -15,6 +15,14 @@ more to come.
 
 # Features
 
+## Vision
+
+Pick can now see stuff.
+
+Vision Pipelines can be created and modified using gcode command and executed to snap photo and detect objects.
+specialised camera module can take any VL4 camera, apply undistortiion, provide frames bot to vision pipleines and to MJPG server where it can be viewed bby operator, that supports HUD display and overlays.
+see [PnP Vision](docs/PnP_Vision.md) for details.
+
 ## Kinematics
 
 Rotary axes for Pick and Place toolhead shall be implemented using `MANUAL_STEPPER' command it's good to put it in a "startup macro" like this
@@ -51,7 +59,7 @@ Maybe some deeper integration into kinematics will be done in future, but it's g
 
 ## Camera Support
 
-There's mow a module that allows to spawn ustreamer for as many cameras as you need and provide some control of it's controls. Those can be received by OpenPNP's MJPGCaptureCamera.
+Ustreamer module allows to spawn ustreamer for as many cameras as you need and provide some control of it's controls. Those can be received by OpenPNP's MJPGCaptureCamera.
 Intent is to allow Pick to sit on RaspberryPi mounted on machine and operate OpenPNp from desktop
 this is Linux specitic module, uses V4L.
 

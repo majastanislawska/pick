@@ -1721,8 +1721,15 @@ write a JPEG under `/tmp/`.
 The following commands are specific for `[camera_v4l <name>]` config section.
 
 #### CAM_HUD
-`CAM_HUD CAM=<name> [OVERLAY=<0|1>] [HUD=<0|1>] [FPS=<0|1>]`: Toggle
-stream overlay, crosshair HUD, and FPS text.
+`CAM_HUD CAM=<name> [OVERLAY=<0|1>] TIMEOUT=<sec> [HUD=<0|1>] [FPS=<0|1>]`: Toggle stream overlay, crosshair HUD, and display of FPS.
+`TIMEOUT` is time after which overlay dissapears.
+
+#### CAM_LIGHT
+`CAM_LIGHT CAM=<name> [LIGHT=<0..1 and/or hex RGB>]`: Set this camera’s
+light (and idle the others). A float is brightness, hex is color,
+instead of color `K<whitetemp>` can be used to produce warm or cold white.
+examples: `LIGHT=0.`, `LIGHT=1.` `LIGHT=0.8,FF8000`, `LIGHT=1.,K6500`
+Omit `LIGHT` to report current state. See [PnP Vision](PnP_Vision.md).
 
 #### CAM_CALIB
 `CAM_CALIB CAM=<name> [M=<matrix>] [D=<coeffs>] [R=<matrix>] [V=<matrix>] [A=<alpha>]`: Load or clear (and show) camera calibration matrices and rebuild
@@ -1737,6 +1744,30 @@ See opencv `getOptimalNewCameraMatrix` for explanation of those params.
 `M`, `D`, `R` and `V` are parsed  by `ast.literal_eval` than subject to conversion to `numpy.array`. needs to be proper python literal but if they contain spaces have to be enclosed by quotes.
 
 This command can be also used in 'startup gcode' instead of having thoose vales in configfile.
+
+### [pnp_vision]
+
+The following commands are available when a
+[pnp_vision](PnP_Vision.md) config section is enabled.
+
+#### PNP_VISION_PIPELINE
+`PNP_VISION_PIPELINE NAME=<id> STEPS=<filter|filter|…>
+[PARAMS=<key:val;…>] [LIGHT=<0..1 and/or hex>]`: Register or replace a
+named detection pipeline. `LIGHT=` is applied before each snapshot
+(see [PnP Vision](PnP_Vision.md#cam_light)).
+
+#### PNP_VISION_LIST
+`PNP_VISION_LIST`: List registered pipelines.
+
+#### PNP_VISION_DETECT
+`PNP_VISION_DETECT CAM=<name> PIPELINE=<id> [<param>=<value> …]`: Run a
+pipeline on one camera snapshot and update the stream overlay.
+
+#### PNP_VISION_HOME
+`PNP_VISION_HOME [FIDUCIAL=primary|secondary] CAM=<name> PIPELINE=<id>
+[TOLERANCE=<mm>] [MAX_ITER=<n>] [SPEED=<mm/s>] [SETTLE=<s>]
+[SET_OFFSET=<0|1>] [RESET_OFFSET=<0|1>]`: Move to the nominal fiducial
+XY, iteratively center the feature under the camera, then set `SET_GCODE_OFFSET` so G-code coordinates match the fiducial.
 
 ### [camera_ustreamer cam]
 
