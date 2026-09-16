@@ -110,6 +110,8 @@ class PnPVision:
             auto['min_r'] = r_px * (1.0 - tol)
             auto['max_r'] = r_px * (1.0 + tol)
             auto['dia_px'] = float(dia) / upp
+            auto['min_area'] = 2.*math.pi*auto['min_r']**2
+            auto['max_area'] = 2.*math.pi*auto['max_r']**2
         if width_mm is not None:
             w_px = float(width_mm) / upp
             auto['w_px'] = w_px
@@ -129,6 +131,9 @@ class PnPVision:
                 auto['max_aspect'] = aspect * (1.0 + tol)
                 auto['long_px'] = long_mm / upp
                 auto['short_px'] = short_mm / upp
+                auto['min_area'] = auto['min_w_px']*auto['min_h_px']
+                auto['max_area'] = auto['max_w_px']*auto['max_h_px']
+        auto.update(params) # overwrite with any user-provided parameters
         return auto
 
     def run_detect(self, cam, pipe_name, gcmd, runtime_params=None):
@@ -268,7 +273,7 @@ class PnPVision:
         pipe_name = gcmd.get('PIPELINE', None)
         if not pipe_name:
             raise gcmd.error("PIPELINE is required.")
-        # fiducial have x,y,z and dia or w,h and optionally tol; 
+        # fiducial have x,y,z and dia or w,h and optionally tol;
         # we use z for mm→px conversion and dia/w/h for auto size params
         fid_name, params = self._lookup_fiducial(gcmd.get('FIDUCIAL', None))
         #now update with overrides from commandline
@@ -276,16 +281,15 @@ class PnPVision:
         params['dia'] = gcmd.get_float('DIA', params.get('dia', None))
         params['w'] = gcmd.get_float('W', params.get('w', None))
         params['h'] = gcmd.get_float('H', params.get('h', None))
+        params['rot'] = gcmd.get_float('ROT', params.get('rot', None))
+        params['rot_tol'] = gcmd.get_float('ROT_TOL', params.get('rot_tol', None))
         size_tol = gcmd.get_float('TOL', params.get('tol', 0.1), minval=0.)
         params= self._size_params_from_mm(cam, z, params, size_tol)
-        if not params:
-            gcmd.respond_info(f"Coversion from mm yielded nothing")
-            params={}
         params['cx']=cam.cx
         params['cy']=cam.cy
         runtime = self.parse_runtime_params(gcmd,
             skip=['CAM', 'PIPELINE', 'FIDUCIAL', 'Z', 'DIA', 'W', 'H',
-                   'TOL', 'LIGHT'])
+                   'ROT', 'ROT_TOL', 'TOL', 'LIGHT'])
         params.update(runtime)
         keys = ', '.join(
                 f'{k}={v:.3f}' if isinstance(v, float) else f'{k}={v}'

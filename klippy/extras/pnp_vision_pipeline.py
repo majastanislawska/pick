@@ -213,7 +213,7 @@ class PnpVisionPipeline:
         self.cleanup()
         self.img = img
         self.cam=cam
-        if self.img is None: 
+        if self.img is None:
             raise gcmd.error("Failed to get frame")
         # self.orig_img=img.copy()
 
@@ -225,7 +225,7 @@ class PnpVisionPipeline:
             if not method:
                 raise gcmd.error(f"Unknown filter '{func_name}'")
             # replace params (ex. 'max_r') with values from active_params
-            evaluated_args = [gcmd]
+            evaluated_args = [gcmd] #first arg is always gcmd for logging
             for arg in raw_args:
                 if arg.lower() in active_params:
                     evaluated_args.append(active_params[arg.lower()])
@@ -341,8 +341,8 @@ class PnpVisionPipeline:
         if int(invert) == 1: mask = cv2.bitwise_not(mask)
         self.img = cv2.bitwise_and(self.img, self.img, mask=mask)
         if self.verbose: gcmd.respond_info(f"mask_centrect({w}, {h}, {invert})")
-    def _filter_canny(self, gcmd, threshold1=50, threshold2=150):
-        self.img = cv2.Canny(self.img, float(threshold1), float(threshold2))
+    def _filter_canny(self, gcmd, threshold1=50, threshold2=150,apertureSize=3,L2gradient=0):
+        self.img = cv2.Canny(self.img, float(threshold1), float(threshold2), apertureSize=apertureSize, L2gradient=L2gradient)
         if self.verbose: gcmd.respond_info(f"canny({threshold1}, {threshold2})")
 
     def _filter_find_contours(self, gcmd,min_area=50,max_area=999999):
@@ -417,8 +417,8 @@ class PnpVisionPipeline:
                              min_circularity=0.7, min_convexity=0.8,
                              min_inertia=0.5, blob_color=255):
         """
-        OpenCV SimpleBlobDetector Works on current gray frame. 
-        (min_r=10., max_r=100., min_circularity=0.7, 
+        OpenCV SimpleBlobDetector Works on current gray frame.
+        (min_r=10., max_r=100., min_circularity=0.7,
         min_convexity=0.8, min_inertia=0.5, blob_color=255).
         blob_color: 255=bright blobs, 0=dark
         Usage: ...|gray()|otsu()|blob_circles(20,80)|...
@@ -542,7 +542,7 @@ class PnpVisionPipeline:
     def _filter_pick_nearest(self, gcmd, cx, cy, keep=1):
         """
         Keep only the N nearest circles/rects to (cx,cy); drop the rest.
-        cx/cy are in auto-params and typically the camera principal point (HUD center)., 
+        cx/cy are in auto-params and typically the camera principal point (HUD center).,
         but may be expected location form motion-prediction,
         Usage: ...|circular_symmetry(0.75)|pick_nearest(cx,cy)|
         """

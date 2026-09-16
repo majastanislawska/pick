@@ -51,7 +51,7 @@ See also [G-Codes](G-Codes.md#pnp_vision) for a command reference.
 
 ### Parameters conventions
 
-All gcode commands can take arbitrary number of key=value pairs that are then passed in `params` dict to pipeline, method `parse_runtime_params()` does that. This can be used to either set params for pipeline or owerwrite values set elsewhere.  
+All gcode commands can take arbitrary number of key=value pairs that are then passed in `params` dict to pipeline, method `parse_runtime_params()` does that. This can be used to either set params for pipeline or owerwrite values set elsewhere.
 Some of them are picked earlier and passed through `_size_params_from_mm()` to compute additional parameters using current camera pose (z height) those are pixel units `min_`/`max_` parameter pairs.
 Some parameters may orginate from config file sections (fiducial sizes, nozzle tip diameters etc), those are passed through `_size_params_from_mm()` too.
 But `_size_params_from_mm()` does not overwrite any existing config params (you can put pixel param to config to refine computed value)
@@ -140,7 +140,7 @@ Grab one processed frame (undistorted path) and write
 
 ### CAM_GET / CAM_SET
 
-`CAM_GET CAM=<name>` — list V4L2 controls (copy into config).  
+`CAM_GET CAM=<name>` — list V4L2 controls (copy into config).
 `CAM_SET CAM=<name> <ctrl>=<value> …` — set controls via `v4l2-ctl`.
 
 ### CAM_HUD
@@ -190,16 +190,16 @@ PNP_VISION_PIPELINE NAME=fiducial LIGHT=0.8
   STEPS="blurgausian(5)|gray()|otsu()|morph_open(9,5)|find_contours_by_r(30,60)|circular_symmetry(symmetry)|pick_nearest(cx,cy)|color()|draw_circles()"
 ```
 
-- `NAME` — pipeline id used by DETECT / CALIB / HOME  
-- `LIGHT` — optional; applied in `run_detect` *before* the snapshot (not a filter). Same tokens as `CAM_LIGHT`. DETECT/HOME may override (`LIGHT=0.4` merges onto the pipeline spec). Turns peer cameras off.  
-- `PARAMS` — `key:value;…` defaults (referenced by name inside `STEPS`)  
+- `NAME` — pipeline id used by DETECT / CALIB / HOME
+- `LIGHT` — optional; applied in `run_detect` *before* the snapshot (not a filter). Same tokens as `CAM_LIGHT`. DETECT/HOME may override (`LIGHT=0.4` merges onto the pipeline spec). Turns peer cameras off.
+- `PARAMS` — `key:value;…` defaults (referenced by name inside `STEPS`)
 - `STEPS` — `|`-separated filters: `name(arg,arg,…)`
 
 Arguments that match a `PARAMS` key (case-insensitive) are substituted
 with that value; otherwise numbers are parsed as int/float and other
 tokens stay as strings.
 Gcode comands that use pipelines can pass arbitrary key=value pairs that are also be used for substitution of `args` in `STEPS`. they have higher preference than `PARAMS` defaults and will overwrite those.
-Some commands pull key=value pairs for substitutiion from config file  
+Some commands pull key=value pairs for substitutiion from config file
 
 Pipeline working state:
 
@@ -299,11 +299,11 @@ Names are as used in `STEPS` (without the `_filter_` prefix).
 
 Recommended stacks:
 
-- **Fiducial / visual_home (exactly 1):**  
+- **Fiducial / visual_home (exactly 1):**
   `find_contours_by_r` → `circular_symmetry` and/or `enclosing_circle` → optional `radial_symmetry` → tight `filter_circles_r`
-- **Tape sprockets (many circles):**  
+- **Tape sprockets (many circles):**
   `otsu` → `dist_peaks(min_r,max_r)` or `blob_circles(...)`
-- **Packages:**  
+- **Packages:**
   `find_contours` → `make_rects` → `filter_rects_*`
 
 ##### Draw / debug / stash
@@ -390,10 +390,10 @@ ACCEPT FIDUCIAL=secondary
 DONE
 ```
 
-- `STEP` (default 8) / `N=4|8` — rosette jog size after each ACCEPT  
-- Each ACCEPT: detect center → ±X/±Y (and diagonals if `N=8`) → average `|mm/px|`  
-- Scale comes from **center motion**, not radius (glare makes `r` unstable)  
-- Prints `mm_per_px:` to paste (no SAVE); RAM is updated immediately  
+- `STEP` (default 8) / `N=4|8` — rosette jog size after each ACCEPT
+- Each ACCEPT: detect center → ±X/±Y (and diagonals if `N=8`) → average `|mm/px|`
+- Scale comes from **center motion**, not radius (glare makes `r` unstable)
+- Prints `mm_per_px:` to paste (no SAVE); RAM is updated immediately
 
 ```text
 PNP_CALIB_CAMERA CAM=topcam PIPELINE=fiducial STEP=4 N=8 RINGS=2
@@ -419,10 +419,10 @@ was on the optical axis:
 PNP_VISION_HOME FIDUCIAL=primary CAM=topcam PIPELINE=fiducial
 ```
 
-1. Optional `SET_GCODE_OFFSET X=0 Y=0` (`RESET_OFFSET=1`)  
-2. Move to fiducial nominal XY (toolhead Z unchanged)  
-3. Detect → `pixels_to_mm_offset` → jog; loop until error ≤ `TOLERANCE`  
-4. `SET_GCODE_OFFSET` so G-code XY matches the fiducial coordinates  
+1. Optional `SET_GCODE_OFFSET X=0 Y=0` (`RESET_OFFSET=1`)
+2. Move to fiducial nominal XY (toolhead Z unchanged)
+3. Detect → `pixels_to_mm_offset` → jog; loop until error ≤ `TOLERANCE`
+4. `SET_GCODE_OFFSET` so G-code XY matches the fiducial coordinates
 
 | Parameter | Default | |
 | --- | --- | --- |
@@ -471,10 +471,10 @@ Always pass a real `gcmd` (pipeline filters use it for messages/errors).
 
 ## Related modules
 
-- `klippy/extras/camera_v4l.py` — V4L2 + MJPEG + undistort + scale  
-- `klippy/extras/pnp_vision.py` — pipelines, detect, home  
-- `klippy/extras/pnp_vision_pipeline.py` — filter implementations  
-- `klippy/extras/pnp_calibration.py` — interactive PXMM / camera calib  
-- `klippy/extras/pnp.py` — fiducials, nozzle offsets  
+- `klippy/extras/camera_v4l.py` — V4L2 + MJPEG + undistort + scale
+- `klippy/extras/pnp_vision.py` — pipelines, detect, home
+- `klippy/extras/pnp_vision_pipeline.py` — filter implementations
+- `klippy/extras/pnp_calibration.py` — interactive PXMM / camera calib
+- `klippy/extras/pnp.py` — fiducials, nozzle offsets
 - Pressure-based Z (`VALVE_PROBE` etc.) can later measure true fiducial
   heights for the `Z=` tags.
