@@ -48,6 +48,27 @@ class detection_item:
         item.box = None
         item.rect = None
         return item
+    @classmethod
+    def from_ellipse(cls, cx, cy, axes_w, axes_h, angle, symmetry=None):
+        """Build a high-precision subpixel detection item from cv2.fitEllipse."""
+        item = object.__new__(cls)
+        item.type = 'circle'
+        item.cx = float(cx)
+        item.cy = float(cy)
+        item.r = float((axes_w + axes_h) / 4.0) # average radius
+        item.area = float(numpy.pi * item.r * item.r)
+        item.w = float(axes_w)
+        item.h = float(axes_h)
+        item.angle = float(angle)
+        item.symmetry = float(symmetry if symmetry is not None
+             else min(axes_w, axes_h) / max(axes_w, axes_h) if max(axes_w, axes_h) > 0 else 0)
+        item.fill_ratio = 1.0
+        item.c_score = item.symmetry # reuse as score
+        item.c = None
+        item.perimeter = float(numpy.pi * 2 * item.r)
+        item.box = None
+        item.rect = None
+        return item
     def __repr__(self):
         s = f"{self.type} xy={self.cx,self.cy}"
         if self.type == 'circle':
@@ -218,8 +239,11 @@ class PnpVisionPipeline:
         # self.orig_img=img.copy()
 
         active_params = self.defaults.copy()
-        active_params.update(runtime_params)
+        params={k:v for k,v in runtime_params.items() if v is not None}
+        active_params.update(params)
         self.verbose=active_params.get('verbose',False)
+        if self.verbose:
+            gcmd.respond_info(f"active_params={active_params}")
         for func_name, raw_args in self.compiled_steps:
             method = getattr(self, f"_filter_{func_name}", None)
             if not method:
@@ -271,6 +295,10 @@ class PnpVisionPipeline:
     def _filter_threshgaus(self, gcmd, block_size, c, max_value=225, method=cv2.THRESH_BINARY):
         self.img = cv2.adaptiveThreshold(self.img, max_value, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, block_size, c)
         if self.verbose: gcmd.respond_info(f"threshgaus({block_size, c, max_value})")
+    def _filter_bilateral(self, gcmd, block_size, sigCol, sigSiz, border=cv2.BORDER_DEFAULT):
+        self.img = cv2.bilateralFilter(self.img,block_size,sigCol, sigSiz, border)
+        if self.verbose: gcmd.respond_info(f"bilateral({block_size, sigCol, sigSiz, border})")
+
     def _filter_mask_hsv(self, gcmd, h_min, h_max, s_min, s_max,  v_min, v_max, invert=0):
         """
         mask_hsv(h_min, h_max, s_min, s_max,  v_min, v_max)
@@ -344,6 +372,12 @@ class PnpVisionPipeline:
     def _filter_canny(self, gcmd, threshold1=50, threshold2=150,apertureSize=3,L2gradient=0):
         self.img = cv2.Canny(self.img, float(threshold1), float(threshold2), apertureSize=apertureSize, L2gradient=L2gradient)
         if self.verbose: gcmd.respond_info(f"canny({threshold1}, {threshold2})")
+    def _filter_sobelxy(self, gcmd,ksize):
+        # Apply Sobel operator
+        sobel_x = cv2.Sobel(self.img, cv2.CV_64F, 1, 0, ksize=ksize)  # Horizontal edges
+        sobel_y = cv2.Sobel(self.img, cv2.CV_64F, 0, 1, ksize=ksize)  # Vertical edges
+        grad = cv2.magnitude(sobel_x, sobel_y)
+        self.img = cv2.convertScaleAbs(grad)
 
     def _filter_find_contours(self, gcmd,min_area=50,max_area=999999):
         contours, _ = cv2.findContours(self.img, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
@@ -506,6 +540,27 @@ class PnpVisionPipeline:
         if self.verbose: gcmd.respond_info(
             f"dist_peaks({min_r},{max_r},{min_dist}, {threshold_rel}, {invert}) "
             f"-> {len(self.detected_circles)} circles")
+    def _filter_fit_ellipses(self, gcmd, min_symmetry=0.75):
+        """
+        Fit ellipses to detected contours (ideally after canny + find_contours).
+        Promotes fitting contours to self.detected_circles if they match min_symmetry.
+        """
+        min_symmetry = float(min_symmetry)
+        before = len(self.detected_contours)
+        self.detected_circles = []
+        for item in self.detected_contours:
+            # cv2.fitEllipse needs at least 5 points to fit an ellipse
+            if item.c is None or len(item.c) < 5:
+                continue
+            (cx, cy), (w, h), angle = cv2.fitEllipse(item.c.astype(numpy.float32))
+            # Geometry quality (ratio of minor axis to major axis)
+            sym = min(w, h) / max(w, h) if max(w, h) > 0 else 0
+            if sym >= min_symmetry:
+                ellipse_item = detection_item.from_ellipse(cx, cy, w, h, angle, symmetry=sym)
+                self.detected_circles.append(ellipse_item)
+        if self.verbose:
+            gcmd.respond_info(f"fit_ellipses({min_symmetry}) contours_in={before} -> circles_out={len(self.detected_circles)}")
+
     def _filter_filter_circles_r(self, gcmd, min_r=0., max_r=9999.):
         """Keep circles whose r is in [min_r, max_r]."""
         min_r, max_r = float(min_r), float(max_r)
@@ -561,9 +616,147 @@ class PnpVisionPipeline:
                 f"pick_nearest rects keep={n} (was {before}) "
                 f"-> {self.detected_rects}")
 
+    def _filter_subpixel_circle(self, gcmd, stash_name="subpix", min_symmetry=0.75, search_padding=5):
+        """
+        Takes raw contours or rough circles, cuts ROI from stashed gray image,
+        calculates high-precision subpixel edges and fits mathematical ellipse.
+        """
+        min_symmetry = float(min_symmetry)
+        gray_img = self.image_stash.get(stash_name)
+        if gray_img is None:
+            raise gcmd.error(f"Stash '{stash_name}' not found for subpixel refinement")
+        h_img, w_img = gray_img.shape[:2]
+        src = self.detected_circles if self.detected_circles else list(self.detected_contours)
+        before = len(src)
+        self.detected_circles = []
+        for item in src:
+            if item.cx is None or item.cy is None:
+                continue
+            # Określamy promień wyszukiwania dla ROI
+            r_search = item.r if item.r and item.r > 0 else 15
+            pad = int(search_padding)
+            x1 = max(0, int(item.cx - r_search - pad))
+            y1 = max(0, int(item.cy - r_search - pad))
+            x2 = min(w_img, int(item.cx + r_search + pad))
+            y2 = min(h_img, int(item.cy + r_search + pad))
+            if (x2 - x1) < 5 or (y2 - y1) < 5:
+                continue
+            roi = gray_img[y1:y2, x1:x2]
+            edges = cv2.Canny(roi, 40, 130)
+            pts = numpy.argwhere(edges > 0)
+            if len(pts) < 5:
+                continue
+            # return to frame coordinates
+            pts_global = numpy.fliplr(pts) + numpy.array([x1, y1])
+            (cx_sub, cy_sub), (w_sub, h_sub), angle = cv2.fitEllipse(pts_global.astype(numpy.float32))
+            sym = min(w_sub, h_sub) / max(w_sub, h_sub) if max(w_sub, h_sub) > 0 else 0
+            if sym >= min_symmetry:
+                sub_item = detection_item.from_ellipse(cx_sub, cy_sub, w_sub, h_sub, angle, symmetry=sym)
+                self.detected_circles.append(sub_item)
+        if self.verbose:
+            gcmd.respond_info(f"subpixel_circle('{stash_name}', {min_symmetry}): in={before} -> out={len(self.detected_circles)}")
+
     def _filter_make_rects(self,gcmd):
         self.detected_rects=[item for item in self.detected_contours if item.test_rect()]
         if self.verbose: gcmd.respond_info(f"rect_sym detected_rects={len(self.detected_rects)}")
+
+    def _filter_subpixel_rect(self, gcmd, stash_name="subpix", search_padding=8):
+        """
+        Takes rough rects from self.detected_rects, separates points into 4 clusters
+        (one per side) using the stashed gray image gradient, fits high-precision
+        subpixel lines via cv2.fitLine, and recomputes the exact rect intersections.
+        """
+        gray_img = self.image_stash.get(stash_name)
+        if gray_img is None:
+            raise gcmd.error(f"Stash '{stash_name}' not found for subpixel rect refinement")
+        h_img, w_img = gray_img.shape[:2]
+        before = len(self.detected_rects)
+        refined_rects = []
+        for item in self.detected_rects:
+            if item.box is None or item.cx is None:
+                continue
+            # make cutout ROI around the rough rectangle with padding and Canny it
+            box = item.box
+            x1 = max(0, int(numpy.min(box[:, 0]) - int(search_padding)))
+            y1 = max(0, int(numpy.min(box[:, 1]) - int(search_padding)))
+            x2 = min(w_img, int(numpy.max(box[:, 0]) + int(search_padding)))
+            y2 = min(h_img, int(numpy.max(box[:, 1]) + int(search_padding)))
+            if (x2 - x1) < 10 or (y2 - y1) < 10:
+                continue
+            roi_gray = gray_img[y1:y2, x1:x2]
+            edges = cv2.Canny(roi_gray, 40, 130)
+            pts = numpy.argwhere(edges > 0)
+            if len(pts) < 20: # not enough edge points to fit lines
+                continue
+            # return to frame coordinates
+            pts_global = numpy.fliplr(pts) + numpy.array([x1, y1])
+            # sort points by their distance to each side
+            sides_pts = [[] for _ in range(4)]
+            for pt in pts_global:
+                pt_f = pt.astype(numpy.float64)
+                min_dist = float('inf')
+                best_side = 0
+                for s in range(4):
+                    p1 = box[s].astype(numpy.float64)
+                    p2 = box[(s + 1) % 4].astype(numpy.float64)
+                    num = abs((p2[1]-p1[1])*pt_f[0] - (p2[0]-p1[0])*pt_f[1] + p2[0]*p1[1] - p2[1]*p1[0])
+                    den = math.sqrt((p2[1]-p1[1])**2 + (p2[0]-p1[0])**2)
+                    dist = num / den if den > 0 else float('inf')
+                    if dist < min_dist:
+                        min_dist = dist
+                        best_side = s
+                if min_dist < int(search_padding):
+                    sides_pts[best_side].append(pt_f)
+            # find subpixel lines for each side using cv2.fitLine
+            lines = []
+            valid_rect = True
+            for s in range(4):
+                if len(sides_pts[s]) < 4: # not enough points on some side
+                    valid_rect = False
+                    break
+                pts_side = numpy.array(sides_pts[s], dtype=numpy.float32)
+                vx, vy, x0, y0 = cv2.fitLine(pts_side, cv2.DIST_L2, 0, 0.01, 0.01)
+                lines.append((float(vx), float(vy), float(x0), float(y0)))
+            if not valid_rect:
+                continue
+            # find intersections of the 4 lines to get refined corners
+            refined_corners = []
+            for i in range(4):
+                vx1, vy1, x1_0, y1_0 = lines[i]
+                vx2, vy2, x2_0, y2_0 = lines[(i + 1) % 4]
+                det = vx1 * vy2 - vy1 * vx2
+                if abs(det) < 1e-5:
+                    valid_rect = False
+                    break
+                t = ((x2_0 - x1_0) * vy2 - (y2_0 - y1_0) * vx2) / det
+                cx_corner = x1_0 + vx1 * t
+                cy_corner = y1_0 + vy1 * t
+                refined_corners.append([cx_corner, cy_corner])
+            if not valid_rect or len(refined_corners) != 4:
+                continue
+            # assemble refined rectangle from corners
+            corners_arr = numpy.array(refined_corners, dtype=numpy.float32)
+            new_rect = cv2.minAreaRect(corners_arr)
+            # construct a new detection_item for the refined rectangle
+            refined_item = detection_item(item.c) # zachowujemy oryginalny kontur w razie czego
+            refined_item.rect = new_rect
+            refined_item.box = numpy.int64(cv2.boxPoints(new_rect)) # int64 dla rysowania, ale dane wewnątrz są float
+            ((refined_item.cx, refined_item.cy), (refined_item.w, refined_item.h), refined_item.angle) = new_rect
+            # normalize angle and dimensions
+            if refined_item.w < refined_item.h:
+                refined_item.angle -= 90.
+                refined_item.w, refined_item.h = refined_item.h, refined_item.w
+            if refined_item.h == 0:
+                continue
+            refined_item.type = 'rect'
+            refined_item.ratio = refined_item.w / refined_item.h
+            refined_item.area = refined_item.w * refined_item.h
+            refined_item.r = float(numpy.sqrt(refined_item.area / numpy.pi))
+            refined_rects.append(refined_item)
+        self.detected_rects = refined_rects
+        if self.verbose:
+            gcmd.respond_info(f"subpixel_rect('{stash_name}'): in={before} -> out={len(self.detected_rects)}")
+
     def _filter_filter_rects_aspect(self, gcmd,min_aspect=0.1, max_aspect=10):
         valid_rects = [item for item in self.detected_rects if float(min_aspect) <= item.ratio <= float(max_aspect)]
         if self.verbose: gcmd.respond_info(f"filter_rects_aspect: in={len(self.detected_rects)} out={len(valid_rects)}")
@@ -634,6 +827,8 @@ class PnpVisionPipeline:
         # cv2.drawContours(self.img, [item.c for item in self.detected_contours], -1, (0, 255, 0), int(thickness))
         if self.verbose: gcmd.respond_info(f"draw_contours: {len(self.detected_contours)} items.")
 
+    def _filter_draw_circmask(self, gcmd,cx,cy,r):
+        cv2.circle(self.img, (int(cx), int(cy)), int(r), (0, 255, 255), 2)
     def _filter_list_circles(self,gcmd):
         for item in self.detected_circles:
             gcmd.respond_info(str(item))
