@@ -101,9 +101,6 @@ class GCodeMove:
         return self.speed_factor * 60.
     def get_status(self, eventtime=None):
         move_position = self._get_gcode_position()
-        logging.info("GcodeMove.get_status %s %s %s %s"%(
-            gcode.Coord,self.homing_position,self.last_position,move_position
-        ))
         return {
             'speed_factor': self._get_gcode_speed_override(),
             'speed': self._get_gcode_speed(),
@@ -294,8 +291,9 @@ class GCodeMove:
         kin_pos = " ".join(["%s:%.6f" % (a, v) for a, v in kinfo])
         toolhead_pos = " ".join(["%s:%.6f" % (a, v) for a, v in zip(
             axes, toolhead.get_position())])
+        move_position = self._get_gcode_position()
         gcode_pos = " ".join(["%s:%.6f"  % (a, v)
-                              for a, v in zip(axes, self.last_position)])
+                              for a, v in zip(axes, move_position)])
         base_pos = " ".join(["%s:%.6f"  % (a, v)
                              for a, v in zip(axes, self.base_position)])
         homing_pos = " ".join(["%s:%.6f"  % (a, v)

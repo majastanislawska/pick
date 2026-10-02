@@ -5,6 +5,7 @@
 # This file may be distributed under the terms of the GNU GPLv3 license.
 import logging
 import chelper
+import gcode
 from . import bulk_sensor
 
 # Extract stepper queue_step messages
@@ -137,7 +138,7 @@ class PrinterMotionReport:
         self.trapqs = {}
         # get_status information
         self.next_status_time = 0.
-        gcode = self.printer.lookup_object('gcode')
+        # gcode = self.printer.lookup_object('gcode')
         self.last_status = {
             'live_position': gcode.Coord(0., 0., 0., 0.),
             'live_velocity': 0., 'live_extruder_velocity': 0.,
@@ -220,7 +221,7 @@ class PrinterMotionReport:
                         evelocity = velocity
         # Report status
         self.last_status = dict(self.last_status)
-        self.last_status['live_position'] = toolhead.Coord(*(pos))
+        self.last_status['live_position'] = gcode.Coord(*(pos))
         self.last_status['live_velocity'] = xyzvelocity
         self.last_status['live_extruder_velocity'] = evelocity
         return self.last_status

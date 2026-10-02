@@ -1745,13 +1745,33 @@ See opencv `getOptimalNewCameraMatrix` for explanation of those params.
 
 This command can be also used in 'startup gcode' instead of having thoose vales in configfile.
 
+### [pnp]
+
+The following commands are available when a
+[pnp](PnP_Move_Transform.md) config section is enabled.
+Those are in early stage and are subject to change.
+
+#### PNP_TOOL
+`PNP_TOOL SET=<name> [MOVE=[0|1]]`
+Selects active tool for PNP move_transform, name can be name of `[pnp_tool]` config section, name of looking down camera or `None`.
+None disables `move_transform` - all moves are handed to default klipper's `gcode_move`.
+
+`MOVE=1` commands newly selected tool to move to position of previous tool. (using "safe Z" - z retracts to 0 before any XY moves, than dwells to Z)
+
+#### PNP_TIP
+`PNP_TIP [LOAD=<name>] [UNLOAD=1] [TOOL=<name>]`
+'Loads' tool tip <name> on tool, on current tool if `TOOL=` is ommited.
+'unloads' if `UNLOAD=1` is set, or prints current tip if on paramms are passed.
+
+This commmand is just a stub for now, in future it will perform toolchanigng sequences.
+
 ### [pnp_vision]
 
 The following commands are available when a
 [pnp_vision](PnP_Vision.md) config section is enabled.
 
 #### PNP_VISION_PIPELINE
-`PNP_VISION_PIPELINE NAME=<id> STEPS=<filter|filter|…>
+`PNP_VISION_PIPELINE NAME=<id> STEPS=<filter|filter|…>`
 [PARAMS=<key:val;…>] [LIGHT=<0..1 and/or hex>]`: Register or replace a
 named detection pipeline. `LIGHT=` is applied before each snapshot
 (see [PnP Vision](PnP_Vision.md#cam_light)).

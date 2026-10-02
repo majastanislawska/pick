@@ -6,14 +6,14 @@
 # This file may be distributed under the terms of the GNU GPLv3 license.
 
 import logging
-import math
+import numpy
 from .pnp_vision_pipeline import PnpVisionPipeline
 
 class PnPVision:
     def __init__(self, config):
         self.printer = config.get_printer()
-        self.reactor = self.printer.get_reactor()
         self.gcode = self.printer.lookup_object('gcode')
+        self.pnp = self.printer.lookup_object('pnp')
         self.cams = {}
         self.pipelines = {}
         self.last_detection = {
@@ -88,18 +88,16 @@ class PnPVision:
         """
         Convert physical sizes (mm) at z_plane → pipeline params (px).
 
-        Uses average |mm/px| from cam.mm_per_px (same as calib/home).
+        Uses average |mm/px| from cam.get_mmpx_on_z (affine A).
         Circle: dia → r, min_r, max_r, rr, dia_px
         Rect:   width/height → w_px, h_px, min/max_width_px, aspect band
-
-        Returns {} if mm_per_px missing or no sizes given.
         """
         if z is None:
-            return {}
+            return params
         ux, uy = cam.get_mmpx_on_z(z)
         upp = 0.5 * (abs(ux) + abs(uy))
         if upp < 1e-12:
-            return {}
+            return params
         dia = params.get('dia',None)
         width_mm = params.get('w',None)
         height_mm = params.get('h',None)
@@ -110,8 +108,8 @@ class PnPVision:
             auto['min_r'] = r_px * (1.0 - tol)
             auto['max_r'] = r_px * (1.0 + tol)
             auto['dia_px'] = float(dia) / upp
-            auto['min_area'] = 2.*math.pi*auto['min_r']**2
-            auto['max_area'] = 2.*math.pi*auto['max_r']**2
+            auto['min_area'] = float(2.*numpy.pi*auto['min_r']**2)
+            auto['max_area'] = float(2.*numpy.pi*auto['max_r']**2)
         if width_mm is not None:
             w_px = float(width_mm) / upp
             auto['w_px'] = w_px
@@ -144,8 +142,8 @@ class PnPVision:
           - exactly 1 circle, 0 rects → flat {kind:'circle', cx, cy, r, score}
           - exactly 1 rect, 0 circles → flat {kind:'rect', cx, cy, w, h, angle, ratio}
           - multi / mixed → {kind:'circles'|'rects'|'mixed', lists via todict()
-        mixed is intentional for tape: sprocket holes (circles) + pocket (rect) in one shot.
-        Consumers that need a single feature use ensure_singular_result.
+        mixed is for tape: sprocket holes (circles) + pocket (rect) in one shot.
+        Consumers that need a single feature use ensure_singular_result().
             res = vision.run_detect(cam, 'fiducial', gcmd, {'min_r': 20})
             cx, cy = vision.ensure_singular_result(res, gcmd, 'label')
         runtime_params: dict of key=value overrides for pipeline defaults (optional).

@@ -223,5 +223,17 @@ class ManualStepper:
     def calc_position(self, stepper_positions):
         return [stepper_positions[self.rail.get_name()], 0., 0.]
 
+    def get_status(self, eventtime):
+        return {
+            'commanded_pos':self.commanded_pos,
+            'pos_min': self.pos_min,
+            'pos_max': self.pos_max,
+            'velocity': self.velocity,
+            'accel': self.accel,
+            'axis_gcode_id': self.axis_gcode_id,
+            'instant_corner_v': self.instant_corner_v,
+            'gaxis_limit_velocity': self.gaxis_limit_velocity,
+            'gaxis_limit_accel': self.gaxis_limit_accel,
+        }
 def load_config_prefix(config):
     return ManualStepper(config)

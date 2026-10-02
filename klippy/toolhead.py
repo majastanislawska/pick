@@ -216,6 +216,7 @@ class ToolHead:
         self.lookahead = LookAheadQueue()
         self.lookahead.set_flush_time(BUFFER_TIME_HIGH)
         self.pos_axes =['x', 'y', 'z', 'e']
+        gcode.Coord=collections.namedtuple('Coord', self.pos_axes)
         self.commanded_pos = [0.0] * len(gcode.Coord._fields)
         # Velocity and acceleration control
         self.max_velocity = config.getfloat('max_velocity', above=0.)

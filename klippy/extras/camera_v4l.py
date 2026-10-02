@@ -19,6 +19,7 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 import socketserver
 import datetime
 import logging
+import math
 
 # V4L2 (Video4Linux2) constants
 V4L2_BUF_TYPE_VIDEO_CAPTURE = 1
@@ -159,6 +160,35 @@ def kelvin_to_rgb(kelvin: float):
         # b = 1
     return (r,g,b)
 
+def calculate_axis_line(center, size,angle_deg):
+    theta = numpy.radians(angle_deg)
+    cx, cy = center
+    w, h = size
+    dx = numpy.cos(theta)
+    dy = numpy.sin(theta)
+    t_values = []
+    if abs(dx) > 1e-6:
+        t = (0 - cx) / dx
+        y = cy + t * dy
+        if 0 <= y <= h:  t_values.append(t)
+        t = (w - cx) / dx
+        y = cy + t * dy
+        if 0 <= y <= h:  t_values.append(t)
+    if abs(dy) > 1e-6:
+        t = (0 - cy) / dy
+        x = cx + t * dx
+        if 0 <= x <= w:  t_values.append(t)
+        t = (h - cy) / dy
+        x = cx + t * dx
+        if 0 <= x <= w:  t_values.append(t)
+    t_values = sorted(set(t_values))
+    if len(t_values) >= 2:
+        t1, t2 = t_values[0], t_values[-1]
+        p1 = (int(cx + t1 * dx), int(cy + t1 * dy))
+        p2 = (int(cx + t2 * dx), int(cy + t2 * dy))
+        return p1, p2
+    return None, None
+
 class ThreadedHTTPServer(socketserver.ThreadingMixIn, HTTPServer):
     daemon_threads = True
     allow_reuse_address = True
@@ -198,8 +228,6 @@ class VisionWorker(threading.Thread):
         super().__init__(daemon=True)
         self.parent=parent
         self.reactor=self.parent.reactor
-        self.frame_w = None
-        self.frame_h = None
         self.fps=0.
         self.frame_counter=0
         self.frame_queue = queue.Queue(maxsize=2)
@@ -208,8 +236,10 @@ class VisionWorker(threading.Thread):
         self.latest_snapshot = None
         self.frameoverlay = None
         self.overlayalpha=0.5
-        self.cx = None
-        self.cy = None
+        self.cw = self.parent.frame_width
+        self.ch = self.parent.frame_height
+        self.cx = self.cw/2.
+        self.cy = self.ch/2.
         self.map1, self.map2 = None,None
 
     def generate_maps(self, camera_matrix, dist_coeffs, rectification_matrix, virtual_camera_matrix):
@@ -219,11 +249,11 @@ class VisionWorker(threading.Thread):
                 return 'clearing_maps'
         self.cx = virtual_camera_matrix[0, 2]
         self.cy = virtual_camera_matrix[1, 2]
-        self.frame_w=int(virtual_camera_matrix[0, 0])
-        self.frame_h=int(virtual_camera_matrix[1, 1])
+        self.cw=int(virtual_camera_matrix[0, 0])
+        self.ch=int(virtual_camera_matrix[1, 1])
         self.map1, self.map2 = cv2.initUndistortRectifyMap(
             camera_matrix, dist_coeffs, rectification_matrix, virtual_camera_matrix,
-            (self.frame_w, self.frame_h), cv2.CV_16SC2 )
+            (self.cw, self.ch), cv2.CV_16SC2 )
         return "maps generated ok"
 
     def push_frame(self, msg):
@@ -249,10 +279,15 @@ class VisionWorker(threading.Thread):
 
     def hud(self,img,w,h,cx,cy):
         color=(0, 255, 255);thickness=2;size=50
-        cv2.line(img, (cx - size, cy), (cx + size, cy), color, thickness)
-        cv2.line(img, (cx, cy - size), (cx, cy + size), color, thickness)
+        p1, p2 = calculate_axis_line((cx,cy),(w,h),self.parent.rot)
+        if p1 and p2: cv2.line(img, p1, p2, (0,255,0), 3)
+        p1, p2 = calculate_axis_line((cx,cy),(w,h),self.parent.rot-90)
+        if p1 and p2: cv2.line(img, p1, p2, (0,0,255), 3)
         cv2.circle(img, (cx, cy), 25, color, 2)
         cv2.rectangle(img, (1, 1), (w-1, h-1), color, thickness)
+
+        txt = "Z:%.4f R:%.4f"%(self.parent.z_plane, self.parent.rot)
+        cv2.putText(img, txt, (2, h-100), cv2.FONT_HERSHEY_SIMPLEX, 3, (255, 255, 0), 2, cv2.LINE_AA)
         return img
 
     def run(self):
@@ -284,7 +319,7 @@ class VisionWorker(threading.Thread):
                         else:
                             self.frameoverlay = None
                 if self.parent.hud_on:
-                    self.hud(img, self.frame_w,self.frame_h,int(self.cx),int(self.cy))
+                    self.hud(img, self.cw,self.ch,int(self.cx),int(self.cy))
                 if self.parent.fps_on:
                     fps = "FPS:%.3f"%(1.0/(eventtime-prev_frame_time),)
                     cv2.putText(img, fps, (2, 50), cv2.FONT_HERSHEY_SIMPLEX, 2, (100, 255, 0), 1, cv2.LINE_AA)
@@ -302,15 +337,22 @@ class V4L2Camera:
         self.short_name = config.get_name().split()[-1]
         self.device = config.get('device', '/dev/video0')
         self.resolution = config.get('resolution', '640x480')
-        # looking: up = fixed bottom camera to look at nozzle; down = head-mounted topcam
-        # flips image-Y sign in pixels_to_mm_offset (see there).
+        self.pnp = self.printer.load_object(config, 'pnp')
+        self.vision = self.printer.load_object(config, 'pnp_vision')
+        self.vision.register_camera(self.short_name,self)
+        # looking: up = fixed bottom camera (nozzle over optical axis);
+        # down = head-mounted topcam (G-code XY = optical axis on the work plane).
         self.looking_up = config.getchoice(
             'looking', {'up': True, 'down': False}, default='down')
         if self.looking_up:
-            #Fixed physical on the frame coordinates of up-facing camera
             self.camera_x = config.getfloat('camera_x', None)
             self.camera_y = config.getfloat('camera_y', None)
-            self.camera_z = config.getfloat('camera_z', None)
+        else:
+            self.offset_x = config.getfloat('offset_x', 0.)
+            self.offset_y = config.getfloat('offset_y', 0.)
+            self.pnp.register_tool(self)
+        self.camera_z = config.getfloat('camera_z', 0.)
+        self.axis_vector = config.getasteval('axis_vector', (0., 0., -1.))
         self.httpaddr = config.get('http_addr', '0.0.0.0')
         self.httpport = config.getint('http_port', 8081)
         self.light_name = config.get('light', None)
@@ -363,14 +405,16 @@ class V4L2Camera:
         self.camera_matrix = numpy.array(cm_list, dtype=numpy.float32).reshape((3, 3))
         dist_list = config.getasteval('dist_coeffs', [0.0, 0.0, 0.0, 0.0, 0.0])
         self.dist_coeffs = numpy.array(dist_list, dtype=numpy.float32)
-        virtual_camera_matrix_list = config.getasteval('virtual_camera_matrix', [[width, 0.0, width//2], [0.0,height, height//2], [0.0, 0.0, 1.0]])
-        self.virt_matrix = numpy.array(virtual_camera_matrix_list, dtype=numpy.float32).reshape((3, 3))
-        self.cx=self.virt_matrix[0, 2]
-        self.cy=self.virt_matrix[1, 2]
+        V = config.getasteval('virtual_camera_matrix', None)
+        self.virt_matrix = None if V is None else numpy.array(V, dtype=numpy.float32).reshape((3, 3))
+        self.cx=width/2 if V is None else self.virt_matrix[0, 2]
+        self.cy=height/2 if V is None else self.virt_matrix[1, 2]
         rectification_matrix_list = config.getasteval('rectification_matrix', [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]])
         self.rectif_matrix = numpy.array(rectification_matrix_list, dtype=numpy.float32).reshape((3, 3))
-        self.mm_per_px=config.getasteval('mm_per_px', None)
+        self.px_per_mm=config.getasteval('px_per_mm', None)
         self.def_z_plane=config.getfloat('def_z', -10.)
+        self.z_plane=self.def_z_plane #current "Z" for camera
+        self.rot =0.
 
         self.printer.register_event_handler("klippy:connect", self._handle_connect)
         self.printer.register_event_handler("klippy:disconnect",  self._handle_disconnect)
@@ -393,15 +437,10 @@ class V4L2Camera:
         if self.light_name:
             self.light = self.printer.lookup_object(self.light_name)
             if not hasattr(self.light, 'led_helper'):
-                raise self.printer.config_error(
-                    "[%s] light '%s' has no led_helper"
-                    % (self.name, self.light_name))
+                raise self.printer.config_error("[%s] light '%s' has no led_helper"% (self.name, self.light_name))
             self.light_channels = probe_led_channels(self.light)
-            logging.info(
-                "[%s]: light=%s channels=%s color=%s s=%s"
-                % (self.name, self.light_name,
-                   channels_str(self.light_channels),
-                   format_hex_color(self._light_color), self._light_s))
+            logging.info("[%s]: light=%s channels=%s color=%s s=%s"% (self.name, self.light_name,
+                   channels_str(self.light_channels), format_hex_color(self._light_color), self._light_s))
         (self.frame_width, self.frame_height) = map(int, self.resolution.split('x'))
         try:
             self.fd = os.open(self.device, os.O_RDWR | os.O_NONBLOCK, 0)
@@ -616,6 +655,10 @@ class V4L2Camera:
         return True
 
     def acquire_light(self, s, color, hold=True, settle=True):
+        """Turn this camera's light on (and every other camera's off)."""
+        for other in self.vision.other_cameras(self):
+            other._cancel_light_hold()
+            other.set_light(output_s=getattr(other, 'light_idle', 0.))
         changed = self.set_light(s=s, color=color)
         want = self._output_s
         if settle and changed and want > 0. and self.light_settle > 0.:
@@ -696,39 +739,122 @@ class V4L2Camera:
             self.camera_matrix,self.dist_coeffs,
             self.rectif_matrix,self.virt_matrix)
 
+    def gcode_to_machine(self, gpos):
+        machine = list(gpos)
+        ux, uy, uz = self.axis_vector
+        dz = gpos[2] - self.camera_z
+        machine[0] = gpos[0] - self.offset_x - dz * ux / uz
+        machine[1] = gpos[1] - self.offset_y - dz * uy / uz
+        machine[2] = gpos[2]
+        return machine
+
+    def machine_to_gcode(self, mpos):
+        gpos = list(mpos)
+        ux, uy, uz = self.axis_vector
+        dz = self.z_plane - self.camera_z
+        gpos[0] = mpos[0] + self.offset_x + dz * ux / uz
+        gpos[1] = mpos[1] + self.offset_y + dz * uy / uz
+        gpos[2] = self.z_plane
+        r_idx = self.pnp.r_index()
+        if r_idx is not None:
+            while len(gpos) <= r_idx:
+                gpos.append(0.)
+            gpos[r_idx] = self.rot
+        return gpos
+
+    def resolve_tool_axes(self,z_pool):
+        self.r_stepper = self.pnp.new_virtual_axis(self)
+
+    def get_position(self):
+        mpos = self.pnp.get_toolhead_pos()
+        thpos = mpos[:]
+        mpos[2] = self.z_plane
+        logging.info(f"v4Lcamera {self.name} get_position toolhead_pos={thpos} machine_pos={mpos} z_plane={self.z_plane} rot={self.rot}")
+        return self.machine_to_gcode(mpos)
+
+    def move(self, newpos, speed):
+        logging.info(f"v4Lcamera {self.name} move {newpos} {speed}")
+        self.z_plane = float(newpos[2])
+        r_idx = self.pnp.r_index()
+        if r_idx is not None and r_idx < len(newpos):
+            self.rot = newpos[r_idx]
+        mpos = self.gcode_to_machine(newpos)
+        if r_idx is not None:
+            while len(mpos) <= r_idx:
+                mpos.append(0.)
+            mpos[r_idx] = self.rot
+        mpos[2] = 0
+        self.pnp.next_transform.move(mpos, speed)
+
+    def _parse_px_per_mm(self, raw):
+        def one(item):
+            A, z = item[0], item[1]
+            return numpy.array(A, dtype=numpy.float64).reshape(2, 2), float(z)
+        try:
+            if raw is None or len(raw) != 2:
+                return None
+            return one(raw[0]), one(raw[1])
+        except Exception:
+            return None
+
+    def get_affine_on_z(self, z):
+        """2×2 px-per-mm at working plane z. Maps machine (dx,dy) → (dcx,dcy)."""
+        pair = self._parse_px_per_mm(self.px_per_mm)
+        if pair is None:
+            return None
+        (A1, z1), (A2, z2) = pair
+        k = ((float(z) - z1) / (z2 - z1)) if abs(z2 - z1) > 0.001 else 0.
+        return A1 + k * (A2 - A1)
+
+    def mm_to_px_delta(self, dx, dy, z=None):
+        if z is None:
+            z = self.z_plane
+        A = self.get_affine_on_z(z)
+        if A is None:
+            return None
+        p = A.dot([float(dx), float(dy)])
+        return float(p[0]), float(p[1])
+
+    def px_to_mm_delta(self, dcx, dcy, z=None):
+        if z is None:
+            z = self.z_plane
+        A = self.get_affine_on_z(z)
+        if A is None:
+            return None
+        try:
+            m = numpy.linalg.inv(A).dot([float(dcx), float(dcy)])
+        except numpy.linalg.LinAlgError:
+            return None
+        return float(m[0]), float(m[1])
+
     def get_mmpx_on_z(self, z):
-        """
-        Positive mm/px magnitudes for motion prediction.
-        Config and calib store +/+ ; image-Y flip is applied in predict/px→mm.
-        """
-        if self.mm_per_px is not None and len(self.mm_per_px) == 2:
-            (x1,y1,z1),(x2,y2,z2)= self.mm_per_px
-            k = ((z - z1) / (z2 - z1)) if abs(z2 - z1) > 0.001 else 0
-            upp_x = x1 + k * (x2 - x1)
-            upp_y = y1 + k * (y2 - y1)
-            return abs(float(upp_x)), abs(float(upp_y))
-        return 0., 0.
+        """mm/px along the two columns of A (machine X, machine Y)."""
+        A = self.get_affine_on_z(z)
+        if A is None:
+            return 0., 0.
+        hx = math.hypot(float(A[0, 0]), float(A[1, 0]))
+        hy = math.hypot(float(A[0, 1]), float(A[1, 1]))
+        if hx < 1e-12 or hy < 1e-12:
+            return 0., 0.
+        return 1. / hx, 1. / hy
 
     def pixels_to_mm_offset(self, x_px, y_px, z_working_height=None):
+        """Pixel of a detection → machine XY of that feature from the optical axis.
+
+        A from PXMM is d(pixel)/d(toolhead). A world-fixed mark (down-cam)
+        slides opposite the gantry, so the map is -inv(A). A tool-fixed
+        nozzle (up-cam) rides with the gantry, so the map is inv(A).
         """
-        Pixel offset from principal point → machine XY offset (mm).
-        mm_per_px samples are positive magnitudes; axis signs:
-          X: always +dx_px * upp_x
-          Y: looking=down (topcam) → -dy_px * upp_y  (image Y down vs machine Y)
-             looking=up   (bottom) → +dy_px * upp_y
-        """
-        if self.virt_matrix is None or self.mm_per_px is None or len(self.mm_per_px)!=2:
-            return 0., 0.
         if z_working_height is None:
-            z_working_height=self.def_z_plane
-        dx_px = x_px - self.virt_matrix[0, 2]
-        dy_px = y_px - self.virt_matrix[1, 2]
-        upp_x, upp_y = self.get_mmpx_on_z(z_working_height)
-        delta_x_mm = float(dx_px) * upp_x
-        # down-looking: image +Y is machine −Y; up-looking: same sense
-        y_sign = 1.0 if self.looking_up else -1.0
-        delta_y_mm = y_sign * float(dy_px) * upp_y
-        return float(delta_x_mm), float(delta_y_mm)
+            z_working_height = self.z_plane
+        dx_px = float(x_px) - self.cx
+        dy_px = float(y_px) - self.cy
+        out = self.px_to_mm_delta(dx_px, dy_px, z_working_height)
+        if out is None:
+            return 0., 0.
+        if self.looking_up:
+            return out
+        return -out[0], -out[1]
 
     def get_status(self, eventtime):
         return {
