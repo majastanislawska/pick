@@ -58,6 +58,10 @@ class PnPManager:
         self._bound_r = None
         self._virtual_r = self.new_virtual_axis(self)
         self._ffi_lib = None
+        webhooks = self.printer.lookup_object('webhooks')
+        webhooks.register_endpoint("pnp/jog", self._webhooks_jog)
+        webhooks.register_endpoint("pnp/move", self._webhooks_move)
+        webhooks.register_endpoint("pnp/tool", self._webhooks_tool)
 
         self.gcode.register_command('PNP_TOOL', self.cmd_PNP_TOOL,
                                     desc=self.cmd_PNP_TOOL_help)
@@ -88,6 +92,43 @@ class PnPManager:
                             type(self.next_transform).__name__)
         self._wrap_commands()
 
+    def _webhooks_jog(self, web_request):
+        jog=[web_request.get_float(axis, 0.) for axis in 'xyzer']
+        f =  web_request.get('f',  None, types=(int, float, None))
+        safe=web_request.get('safe', True, types=(bool,))
+        speed=self.gcode_move.speed if f is None else f * self.gcode_move.speed_factor
+        logging.info(f"_webhooks_jog {jog} {f} {safe} {speed}")
+        pos=self.get_position()
+        for i in range(len(jog)):
+            pos[i]+=jog[i]
+        if safe:
+            if jog[0]==0. and jog[1]==0.: #dont jerk z if not doing xy moves
+                return self.move(pos, speed)
+            return self.safe_move(pos, speed)
+        return self.move(pos, speed)
+
+    def _webhooks_move(self, web_request):
+        jog=[web_request.get(axis, None, types=(int, float, None)) for axis in 'xyzer']
+        f =  web_request.get('f',  None, types=(int, float, None))
+        safe=web_request.get('safe', True, types=(bool,))
+        speed=self.gcode_move.speed if f is None else f * self.gcode_move.speed_factor
+        logging.info(f"_webhooks_move {jog} {f} {safe} {speed}")
+        pos=self.get_position()
+        for i in range(len(jog)):
+            if jog[i] is not None: pos[i]=float(jog[i])
+        if safe:
+            if jog[0] is None and jog[1] is None: #dont jerk z if not doing xy moves
+                return self.move(pos, speed)
+            return self.safe_move(pos, speed)
+        return self.move(pos, speed)
+
+    def _webhooks_tool(self, web_request):
+        toolname=web_request.get_str('tool',None)
+        want_move=web_request.get('move', False, types=(bool,))
+        tool = self.lookup_tool(toolname)
+        if tool == self.active_tool:
+            return
+        return self.select_tool(tool, want_move)
 
     def unbind_gcode_axis(self, stepper):
         if stepper.axis_gcode_id is None:

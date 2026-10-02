@@ -35,7 +35,9 @@ class PnPVision:
         self.home_speed = config.getfloat('homing_speed', 50.)
         self.home_tolerance = config.getfloat('homing_tolerance', 0.05)
         self.home_max_iter = config.getint('homing_max_iter', 8)
-
+        webhooks = self.printer.lookup_object('webhooks')
+        webhooks.register_endpoint("pnp/light", self._webhooks_light)
+        webhooks.register_endpoint("pnp/px2mach", self._webhooks_px2mach)
         self.gcode.register_command(
             'PNP_VISION_PIPELINE', self.cmd_PNP_VISION_PIPELINE,
             desc=self.cmd_PNP_VISION_PIPELINE_help)
@@ -45,6 +47,32 @@ class PnPVision:
         self.gcode.register_command(
             'PNP_VISION_LIST', self.cmd_PNP_VISION_LIST,
             desc=self.cmd_PNP_VISION_LIST_help)
+        self.gcode.register_command(
+            'PNP_VISION_HOME', self.cmd_PNP_VISION_HOME,
+            desc=self.cmd_PNP_VISION_HOME_help)
+        self.gcode.register_command(
+            'PNP_VISION_RUNOUT', self.cmd_PNP_VISION_RUNOUT,
+            desc=self.cmd_PNP_VISION_RUNOUT_help)
+
+    def _webhooks_light(self, web_request):
+        on=web_request.get('on', True, types=(bool,))
+        s=web_request.get('s',None, types=(float, None,))
+        color=web_request.get_str('color',None)
+        cam=self.lookup_cam(web_request.get_str('cam',None))
+        if s is not None:
+            cam.acquire_light(s, color, hold=False, settle=False)
+        else:
+            if on: cam.acquire_light(cam.light_s_default, color, hold=False, settle=False)
+            else: cam.acquire_light(cam.light_idle, color, hold=False, settle=False)
+    def _webhooks_px2mach(self, web_request):
+        x_px=web_request.get_float('px')
+        y_px=web_request.get_float('py')
+        cam=self.lookup_cam(web_request.get_str('cam',None))
+        (dx,dy)=cam.pixels_to_mm_offset(x_px, y_px)#, z_working_height=None)
+        if cam.looking_up:
+            web_request.send({'dx':-dx, 'dy':-dy})
+        else:
+            web_request.send({'dx':dx, 'dy':dy})
 
     def register_camera(self, name, cam):
         logging.info(f"register_camera: {name} {cam.resolution}")
