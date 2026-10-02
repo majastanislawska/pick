@@ -34,9 +34,9 @@ class UStreamer:
         gcode = self.printer.lookup_object('gcode')
         gcode.register_mux_command('CAM_RESTART', "CAM", self.name,
                         self.cmd_CAM_RESTART, desc=self.cmd_CAM_RESTART_help)
-        gcode.register_mux_command('CAM_SET', 'CAM', self.name, 
+        gcode.register_mux_command('CAM_SET', 'CAM', self.name,
                         self.cmd_CAM_SET, desc=self.cmd_CAM_SET_help)
-        gcode.register_mux_command('CAM_GET', 'CAM', self.name, 
+        gcode.register_mux_command('CAM_GET', 'CAM', self.name,
                         self.cmd_CAM_GET, desc=self.cmd_CAM_GET_help)
 
         self.printer.register_event_handler("klippy:shutdown", self._handle_shutdown)
@@ -66,7 +66,7 @@ class UStreamer:
                     details = re.sub(r'\s+', ' ', details) # squash blank spaces
                     controls[ctrl_name] = (value, ctrl_type_info, details)
         return controls
-    
+
     def _apply_v4l2_settings(self,params):
         args = ["v4l2-ctl", "-d", self.device]
         for ctrl_name, val in params.items():
@@ -89,7 +89,6 @@ class UStreamer:
             "--tcp-nodelay", "-l",
             "-f", "15",
         ]
-        
         # Append extra parameters if they exist
         if self.extra_args:
             cmd.extend(self.extra_args.split())
@@ -138,8 +137,6 @@ class UStreamer:
         gcmd.respond_info("\nyou can copy these values to your camera section in printer.cfg:\n\n")
         for ctrl_name, (value, ctrl_type_info, clean_details) in self.controls.items():
             gcmd.respond_info(f"{ctrl_name}: {value}  #{ctrl_type_info}, {clean_details}")
-
-    
     cmd_CAM_SET_help = "Sets V4L2 camera parameters. Usage: CAM_SET CAM=... PARAM=VALUE"
     def cmd_CAM_SET(self, gcmd):
         params = {k.lower(): gcmd.get(k).lower() for k in gcmd.get_command_parameters() if k != 'CAM'}
@@ -151,7 +148,7 @@ class UStreamer:
         raise gcmd.error("Missing parameters")
 
     def get_status(self, eventtime):
-        ret= {'pid': self.process.pid if self.process else None, 
+        ret= {'pid': self.process.pid if self.process else None,
               'running': self.process.poll() is None if self.process else False,
               'device': self.device,
               'resolution': self.resolution,

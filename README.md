@@ -25,7 +25,15 @@ see [PnP Vision](docs/PnP_Vision.md) for details.
 
 ## Kinematics
 
-Rotary axes for Pick and Place toolhead shall be implemented using `MANUAL_STEPPER' command it's good to put it in a "startup macro" like this
+Framework that maintains consistent Cartesian `XYZR` "gcode space" for tip of currently selected tool with currently loaded tooltip (or camera principal point) and adjusts machine coordinates to compensate for all known offsets and misalignments (tool offsets, Z-axis tilt, camera optical-axis tilt, and tooltip runout) has been implemented using Klipper's `move_transform`.
+it also provides way to switch between tools and camera.
+
+see [PnP_Move_Transform.md](docs/PnP_Move_Transform.md) for details.
+
+## OpenPNP compatibility
+
+If you want to use Pickk with OpenPNP don't use above feature as it's incompatible with OpenPNP.
+Configure rotary axes for Pick and Place toolhead using `MANUAL_STEPPER' command it's good to put it in a "startup macro" like this
 
 ```text
 [delayed_gcode init_axes]
@@ -53,9 +61,6 @@ rotation_distance: 360
 ```
 
 (this setup treats degrees like millimeters, speeds and accelerations need to be adjusted to match motor.)
-
-some effort has been made to make those steppers show up and be acted upon in relevant gcode commands so OpenPNP can see and use them.
-Maybe some deeper integration into kinematics will be done in future, but it's good enough for now.
 
 ## Camera Support
 
