@@ -1645,7 +1645,7 @@ vision-based XY home on machine fiducials.</p>
 <li>caller typically gathers <code>runtime_params</code> from config section of what it's trying to detect (ex fiducial) and it's own gcode parmeters</li>
 </ul>
 <h3 id="parameters-conventions">Parameters conventions<a class="headerlink" href="#parameters-conventions" title="Permanent link">&para;</a></h3>
-<p>All gcode commands can take arbitrary number of key=value pairs that are then passed in <code>params</code> dict to pipeline, method <code>parse_runtime_params()</code> does that. This can be used to either set params for pipeline or owerwrite values set elsewhere.<br />
+<p>All gcode commands can take arbitrary number of key=value pairs that are then passed in <code>params</code> dict to pipeline, method <code>parse_runtime_params()</code> does that. This can be used to either set params for pipeline or owerwrite values set elsewhere.
 Some of them are picked earlier and passed through <code>_size_params_from_mm()</code> to compute additional parameters using current camera pose (z height) those are pixel units <code>min_</code>/<code>max_</code> parameter pairs.
 Some parameters may orginate from config file sections (fiducial sizes, nozzle tip diameters etc), those are passed through <code>_size_params_from_mm()</code> too.
 But <code>_size_params_from_mm()</code> does not overwrite any existing config params (you can put pixel param to config to refine computed value)</p>
@@ -1821,7 +1821,7 @@ is no <code>SAVE</code> command by design.</p>
 <p>Grab one processed frame (undistorted path) and write
 <code>/tmp/pnp_&lt;cam&gt;_&lt;tag&gt;_….jpeg</code>.</p>
 <h3 id="cam_get-cam_set">CAM_GET / CAM_SET<a class="headerlink" href="#cam_get-cam_set" title="Permanent link">&para;</a></h3>
-<p><code>CAM_GET CAM=&lt;name&gt;</code> — list V4L2 controls (copy into config).<br />
+<p><code>CAM_GET CAM=&lt;name&gt;</code> — list V4L2 controls (copy into config).
 <code>CAM_SET CAM=&lt;name&gt; &lt;ctrl&gt;=&lt;value&gt; …</code> — set controls via <code>v4l2-ctl</code>.</p>
 <h3 id="cam_hud">CAM_HUD<a class="headerlink" href="#cam_hud" title="Permanent link">&para;</a></h3>
 <p><code>CAM_HUD CAM=&lt;name&gt; [OVERLAY=0|1] [HUD=0|1] [FPS=0|1]</code></p>
@@ -1855,16 +1855,16 @@ undistort maps.</p>
 </code></pre></div>
 
 <ul>
-<li><code>NAME</code> — pipeline id used by DETECT / CALIB / HOME  </li>
-<li><code>LIGHT</code> — optional; applied in <code>run_detect</code> <em>before</em> the snapshot (not a filter). Same tokens as <code>CAM_LIGHT</code>. DETECT/HOME may override (<code>LIGHT=0.4</code> merges onto the pipeline spec). Turns peer cameras off.  </li>
-<li><code>PARAMS</code> — <code>key:value;…</code> defaults (referenced by name inside <code>STEPS</code>)  </li>
+<li><code>NAME</code> — pipeline id used by DETECT / CALIB / HOME</li>
+<li><code>LIGHT</code> — optional; applied in <code>run_detect</code> <em>before</em> the snapshot (not a filter). Same tokens as <code>CAM_LIGHT</code>. DETECT/HOME may override (<code>LIGHT=0.4</code> merges onto the pipeline spec). Turns peer cameras off.</li>
+<li><code>PARAMS</code> — <code>key:value;…</code> defaults (referenced by name inside <code>STEPS</code>)</li>
 <li><code>STEPS</code> — <code>|</code>-separated filters: <code>name(arg,arg,…)</code></li>
 </ul>
 <p>Arguments that match a <code>PARAMS</code> key (case-insensitive) are substituted
 with that value; otherwise numbers are parsed as int/float and other
 tokens stay as strings.
 Gcode comands that use pipelines can pass arbitrary key=value pairs that are also be used for substitution of <code>args</code> in <code>STEPS</code>. they have higher preference than <code>PARAMS</code> defaults and will overwrite those.
-Some commands pull key=value pairs for substitutiion from config file  </p>
+Some commands pull key=value pairs for substitutiion from config file</p>
 <p>Pipeline working state:</p>
 <table>
 <thead>
@@ -2175,12 +2175,12 @@ Some commands pull key=value pairs for substitutiion from config file  </p>
 </table>
 <p>Recommended stacks:</p>
 <ul>
-<li><strong>Fiducial / visual_home (exactly 1):</strong><br />
-<code>find_contours_by_r</code> → <code>circular_symmetry</code> and/or <code>enclosing_circle</code> → optional <code>radial_symmetry</code> → tight <code>filter_circles_r</code></li>
-<li><strong>Tape sprockets (many circles):</strong><br />
-<code>otsu</code> → <code>dist_peaks(min_r,max_r)</code> or <code>blob_circles(...)</code></li>
-<li><strong>Packages:</strong><br />
-<code>find_contours</code> → <code>make_rects</code> → <code>filter_rects_*</code></li>
+<li><strong>Fiducial / visual_home (exactly 1):</strong>
+  <code>find_contours_by_r</code> → <code>circular_symmetry</code> and/or <code>enclosing_circle</code> → optional <code>radial_symmetry</code> → tight <code>filter_circles_r</code></li>
+<li><strong>Tape sprockets (many circles):</strong>
+  <code>otsu</code> → <code>dist_peaks(min_r,max_r)</code> or <code>blob_circles(...)</code></li>
+<li><strong>Packages:</strong>
+  <code>find_contours</code> → <code>make_rects</code> → <code>filter_rects_*</code></li>
 </ul>
 <h5 id="draw-debug-stash">Draw / debug / stash<a class="headerlink" href="#draw-debug-stash" title="Permanent link">&para;</a></h5>
 <table>
@@ -2277,10 +2277,10 @@ DONE
 </code></pre></div>
 
 <ul>
-<li><code>STEP</code> (default 8) / <code>N=4|8</code> — rosette jog size after each ACCEPT  </li>
-<li>Each ACCEPT: detect center → ±X/±Y (and diagonals if <code>N=8</code>) → average <code>|mm/px|</code>  </li>
-<li>Scale comes from <strong>center motion</strong>, not radius (glare makes <code>r</code> unstable)  </li>
-<li>Prints <code>mm_per_px:</code> to paste (no SAVE); RAM is updated immediately  </li>
+<li><code>STEP</code> (default 8) / <code>N=4|8</code> — rosette jog size after each ACCEPT</li>
+<li>Each ACCEPT: detect center → ±X/±Y (and diagonals if <code>N=8</code>) → average <code>|mm/px|</code></li>
+<li>Scale comes from <strong>center motion</strong>, not radius (glare makes <code>r</code> unstable)</li>
+<li>Prints <code>mm_per_px:</code> to paste (no SAVE); RAM is updated immediately</li>
 </ul>
 <div class="highlight"><pre><span></span><code>PNP_CALIB_CAMERA CAM=topcam PIPELINE=fiducial STEP=4 N=8 RINGS=2
 ACCEPT FIDUCIAL=primary     ; dense rosette → mm/px + fiducial XY
@@ -2304,10 +2304,10 @@ was on the optical axis:</p>
 </code></pre></div>
 
 <ol>
-<li>Optional <code>SET_GCODE_OFFSET X=0 Y=0</code> (<code>RESET_OFFSET=1</code>)  </li>
-<li>Move to fiducial nominal XY (toolhead Z unchanged)  </li>
-<li>Detect → <code>pixels_to_mm_offset</code> → jog; loop until error ≤ <code>TOLERANCE</code>  </li>
-<li><code>SET_GCODE_OFFSET</code> so G-code XY matches the fiducial coordinates  </li>
+<li>Optional <code>SET_GCODE_OFFSET X=0 Y=0</code> (<code>RESET_OFFSET=1</code>)</li>
+<li>Move to fiducial nominal XY (toolhead Z unchanged)</li>
+<li>Detect → <code>pixels_to_mm_offset</code> → jog; loop until error ≤ <code>TOLERANCE</code></li>
+<li><code>SET_GCODE_OFFSET</code> so G-code XY matches the fiducial coordinates</li>
 </ol>
 <table>
 <thead>
@@ -2385,11 +2385,11 @@ PNP_VISION_HOME FIDUCIAL=primary CAM=topcam PIPELINE=fiducial
 <code>pixels_to_mm_offset</code> returns plain Python <code>float</code> (JSON/webhooks safe).</p>
 <h2 id="related-modules">Related modules<a class="headerlink" href="#related-modules" title="Permanent link">&para;</a></h2>
 <ul>
-<li><code>klippy/extras/camera_v4l.py</code> — V4L2 + MJPEG + undistort + scale  </li>
-<li><code>klippy/extras/pnp_vision.py</code> — pipelines, detect, home  </li>
-<li><code>klippy/extras/pnp_vision_pipeline.py</code> — filter implementations  </li>
-<li><code>klippy/extras/pnp_calibration.py</code> — interactive PXMM / camera calib  </li>
-<li><code>klippy/extras/pnp.py</code> — fiducials, nozzle offsets  </li>
+<li><code>klippy/extras/camera_v4l.py</code> — V4L2 + MJPEG + undistort + scale</li>
+<li><code>klippy/extras/pnp_vision.py</code> — pipelines, detect, home</li>
+<li><code>klippy/extras/pnp_vision_pipeline.py</code> — filter implementations</li>
+<li><code>klippy/extras/pnp_calibration.py</code> — interactive PXMM / camera calib</li>
+<li><code>klippy/extras/pnp.py</code> — fiducials, nozzle offsets</li>
 <li>Pressure-based Z (<code>VALVE_PROBE</code> etc.) can later measure true fiducial
   heights for the <code>Z=</code> tags.</li>
 </ul>

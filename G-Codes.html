@@ -2664,6 +2664,33 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#pnp" class="md-nav__link">
+    [pnp]
+  </a>
+  
+    <nav class="md-nav" aria-label="[pnp]">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#pnp_tool" class="md-nav__link">
+    PNP_TOOL
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#pnp_tip" class="md-nav__link">
+    PNP_TIP
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#pnp_vision" class="md-nav__link">
     [pnp_vision]
   </a>
@@ -5164,6 +5191,33 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#pnp" class="md-nav__link">
+    [pnp]
+  </a>
+  
+    <nav class="md-nav" aria-label="[pnp]">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#pnp_tool" class="md-nav__link">
+    PNP_TOOL
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#pnp_tip" class="md-nav__link">
+    PNP_TIP
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#pnp_vision" class="md-nav__link">
     [pnp_vision]
   </a>
@@ -6718,13 +6772,27 @@ If <code>V</code> is omitted and <code>A</code> is set, new virtual camera matri
 <p>See opencv <code>getOptimalNewCameraMatrix</code> for explanation of those params.</p>
 <p><code>M</code>, <code>D</code>, <code>R</code> and <code>V</code> are parsed  by <code>ast.literal_eval</code> than subject to conversion to <code>numpy.array</code>. needs to be proper python literal but if they contain spaces have to be enclosed by quotes.</p>
 <p>This command can be also used in 'startup gcode' instead of having thoose vales in configfile.</p>
+<h3 id="pnp">[pnp]<a class="headerlink" href="#pnp" title="Permanent link">&para;</a></h3>
+<p>The following commands are available when a
+<a href="PnP_Move_Transform.html">pnp</a> config section is enabled.
+Those are in early stage and are subject to change.</p>
+<h4 id="pnp_tool">PNP_TOOL<a class="headerlink" href="#pnp_tool" title="Permanent link">&para;</a></h4>
+<p><code>PNP_TOOL SET=&lt;name&gt; [MOVE=[0|1]]</code>
+Selects active tool for PNP move_transform, name can be name of <code>[pnp_tool]</code> config section, name of looking down camera or <code>None</code>.
+None disables <code>move_transform</code> - all moves are handed to default klipper's <code>gcode_move</code>.</p>
+<p><code>MOVE=1</code> commands newly selected tool to move to position of previous tool. (using "safe Z" - z retracts to 0 before any XY moves, than dwells to Z)</p>
+<h4 id="pnp_tip">PNP_TIP<a class="headerlink" href="#pnp_tip" title="Permanent link">&para;</a></h4>
+<p><code>PNP_TIP [LOAD=&lt;name&gt;] [UNLOAD=1] [TOOL=&lt;name&gt;]</code>
+'Loads' tool tip <name> on tool, on current tool if <code>TOOL=</code> is ommited.
+'unloads' if <code>UNLOAD=1</code> is set, or prints current tip if on paramms are passed.</p>
+<p>This commmand is just a stub for now, in future it will perform toolchanigng sequences.</p>
 <h3 id="pnp_vision">[pnp_vision]<a class="headerlink" href="#pnp_vision" title="Permanent link">&para;</a></h3>
 <p>The following commands are available when a
 <a href="PnP_Vision.html">pnp_vision</a> config section is enabled.</p>
 <h4 id="pnp_vision_pipeline">PNP_VISION_PIPELINE<a class="headerlink" href="#pnp_vision_pipeline" title="Permanent link">&para;</a></h4>
-<p><code>PNP_VISION_PIPELINE NAME=&lt;id&gt; STEPS=&lt;filter|filter|…&gt;
-[PARAMS=&lt;key:val;…&gt;] [LIGHT=&lt;0..1 and/or hex&gt;]</code>: Register or replace a
-named detection pipeline. <code>LIGHT=</code> is applied before each snapshot
+<p><code>PNP_VISION_PIPELINE NAME=&lt;id&gt; STEPS=&lt;filter|filter|…&gt;</code>
+[PARAMS=<key:val;…>] [LIGHT=&lt;0..1 and/or hex&gt;]<code>: Register or replace a
+named detection pipeline.</code>LIGHT=` is applied before each snapshot
 (see <a href="PnP_Vision.html#cam_light">PnP Vision</a>).</p>
 <h4 id="pnp_vision_list">PNP_VISION_LIST<a class="headerlink" href="#pnp_vision_list" title="Permanent link">&para;</a></h4>
 <p><code>PNP_VISION_LIST</code>: List registered pipelines.</p>
