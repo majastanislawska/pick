@@ -338,10 +338,253 @@ class PnPVision:
         else:
             gcmd.respond_info("DETECT finished — no feature found")
 
+    cmd_PNP_VISION_HOME_help = (
+        "Vision-home XY on a fiducial: move to nominal, detect, jog to center, "
+        "loop until offset≈0, then SET_GCODE_OFFSET so gcode matches fiducial XY.")
+    def cmd_PNP_VISION_HOME(self, gcmd):
+        """
+        PNP_VISION_HOME FIDUCIAL=primary CAM=topcam PIPELINE=fiducial
+
+        1) optional SET_GCODE_OFFSET X=0 Y=0
+        2) move toolhead to fiducial nominal XY (Z unchanged)
+        3) detect -> pixels_to_mm_offset (using fiducial nominal Z) -> jog
+        4) repeat until |err| <= TOLERANCE
+        5) SET_GCODE_OFFSET so M114 shows fiducial (fx,fy) at this physical pose
+
+        Optional: TOLERANCE=0.05 MAX_ITER=8 SPEED=50 SETTLE=0.2 SET_OFFSET=1
+        Size band: uses fiducial dia@z → r/min_r/max_r unless R=/DIA=/TOL= on console.
+        Other pipeline runtime params are forwarded.
+        """
+        cam = self.lookup_cam(gcmd.get('CAM', 'topcam'))
+        if cam.looking_up:
+            raise gcmd.error(f"Can't use up looking camera")
+        #need another validation for tool?
+        self.pnp.select_tool(cam,False)
+        pipe_name = gcmd.get('PIPELINE', 'visual_home')
+        if pipe_name not in self.pipelines:
+            raise gcmd.error(f"Pipeline '{pipe_name}' does not exist. Register with PNP_VISION_PIPELINE first.")
+        tol = gcmd.get_float('TOLERANCE', self.home_tolerance, above=0.)
+        max_iter = gcmd.get_int('MAX_ITER', self.home_max_iter, minval=1)
+        speed = gcmd.get_float('SPEED', self.home_speed, above=0.)
+        settle = gcmd.get_float('SETTLE', 0.2, minval=0.)
+        set_offset = gcmd.get_int('SET_OFFSET', 1)
+        # fiducial have x,y,z and dia or w/h and optionally tol;
+        # we use z for mm→px conversion and dia/w/h for auto size params
+        fid_name, params = self._lookup_fiducial(gcmd.get('FIDUCIAL', 'primary'))
+        #now update with overrides from commandline
+        z = gcmd.get_float('Z', params.get('z', getattr(cam, 'def_z_plane', None)))
+        fx = gcmd.get_float('X', params.get('x', None))
+        fy = gcmd.get_float('Y', params.get('y', None))
+        params['dia'] = gcmd.get_float('DIA', params.get('dia', None))
+        params['w'] = gcmd.get_float('W', params.get('w', None))
+        params['h'] = gcmd.get_float('H', params.get('h', None))
+        params['rot'] = gcmd.get_float('ROT', params.get('rot', None))
+        params['rot_tol'] = gcmd.get_float('ROT_TOL', params.get('rot_tol', None))
+        size_tol = gcmd.get_float('TOL', params.get('tol', 0.1), minval=0.)
+
+        ux, uy = cam.get_mmpx_on_z(z)
+        upp = 0.5 * (abs(float(ux)) + abs(float(uy)))
+        if upp < 1e-12:
+            raise gcmd.error(f"Camera [{cam.name}] has unusable mm/px at Z={z:g} (upp≈{upp:.5g}) — check PNP_CALIB_PXMM or config.")
+        params= self._size_params_from_mm(cam, z, params, size_tol)
+        params['cx']=cam.cx
+        params['cy']=cam.cy
+        runtime = self.parse_runtime_params(gcmd,
+            skip=['CAM', 'PIPELINE', 'FIDUCIAL', 'TOLERANCE',
+                  'MAX_ITER', 'SPEED', 'SETTLE', 'SET_OFFSET',
+                  'TOL', 'DIA', 'Z', 'W', 'H', 'ROT', 'ROT_TOL','LIGHT'])
+        params.update(runtime)
+        toolhead = self.printer.lookup_object('toolhead')
+        # Nominal approach — XY only; keep toolhead Z (camera look height)
+        pos = self.pnp.get_position()
+        gcmd.respond_info(f"home on {fid_name}: nominal XY=({fx:.4f},{fy:.4f}) Z_plane={z:g}")
+        pos[0],pos[1],pos[2]=fx,fy,z
+        self.pnp.move_and_settle(pos, speed, settle)
+        err = None
+        dx_mm = dy_mm = 0.
+        cx = cy = None
+        for i in range(max_iter):
+            result = self.run_detect(cam, pipe_name, gcmd, params)
+            cx, cy = self.ensure_singular_result(result, gcmd, f"home[{i+1}]")
+            dx_mm, dy_mm = cam.pixels_to_mm_offset(cx, cy, z)
+            err = numpy.hypot(dx_mm, dy_mm).astype(float)
+            gcmd.respond_info(f"home[{i+1}/{max_iter}]: px=({cx:.2f},{cy:.2f}) d_mm=({dx_mm:.4f},{dy_mm:.4f}) err={err:.4f}mm")
+            if err <= tol:
+                gcmd.respond_info(f"converged: err={err:.4f} <= TOLERANCE={tol}")
+                break
+            pos = self.pnp.get_position()
+            (pos[0],pos[1])=(pos[0] + dx_mm, pos[1] + dy_mm,)
+            self.pnp.move_and_settle(pos, speed, settle)
+        else:
+            self.last_home['success'] = False
+            self.last_home['fiducial'] = fid_name
+            self.last_home['toolhead'] = list(toolhead.get_position()[:2])
+            self.last_home['gcode'] = list(self.pnp.get_position()[:2])
+            self.last_home['gcode_offset'] = None
+            self.last_home['err_mm'] = err
+            raise gcmd.error(f"PNP_VISION_HOME: not converged after {max_iter} iters (err={err:.4f}mm, tol={tol})")
+
+        # Final re-check (no move) for reported residual
+        result = self.run_detect(cam, pipe_name, gcmd, params)
+        if result.get('kind') in ('circle', 'rect') and result.get('cx') is not None:
+            cx, cy = float(result['cx']), float(result['cy'])
+            dx_mm, dy_mm = cam.pixels_to_mm_offset(cx, cy, z)
+            err = numpy.hypot(dx_mm, dy_mm).astype(float)
+            gcmd.respond_info(f"final residual: px=({cx:.2f},{cy:.2f}) d_mm=({dx_mm:.4f},{dy_mm:.4f}) err={err:.4f}mm")
+
+        # pos = toolhead.get_position()
+        pos = self.pnp.get_position()
+        ox = pos[0] - fx
+        oy = pos[1] - fy
+        cmd=f'SET_GCODE_OFFSET X={ox:.6f} Y={oy:.6f}'
+        if set_offset:
+            self.gcode.run_script_from_command(cmd)
+            gcmd.respond_info(f"toolhead=({pos[0]:.4f},{pos[1]:.4f}) will now report as ({fx:.4f},{fy:.4f})")
+            gcmd.respond_info(cmd)
+        else:
+            gcmd.respond_info(f"SET_OFFSET=0 — would use: {cmd}")
+
+        self.last_detection['success'] = True
+        self.last_detection['pipeline'] = pipe_name
+        self.last_detection['cam'] = cam.name
+        self.last_detection['cx'] = cx
+        self.last_detection['cy'] = cy
+        self.last_detection['r'] = result.get('r') if result else None
+        self.last_detection['coords'] = [dx_mm, dy_mm]
+        self.last_home['success'] = True
+        self.last_home['fiducial'] = fid_name
+        self.last_home['toolhead'] = [pos[0], pos[1]]
+        self.last_home['gcode_offset'] = [ox, oy]
+        self.last_home['err_mm'] = err
+        self.last_home['fiducial_xy'] = [fx, fy]
+        self.last_home['fiducial_z'] = z
+        gcmd.respond_info(f"PNP_VISION_HOME done on {fid_name} err={err:.4f}mm")
+
+    def _fit_circle(self, pts):
+        n = float(len(pts))
+        sx = sum(p[0] for p in pts)
+        sy = sum(p[1] for p in pts)
+        sxx = sum(p[0]*p[0] for p in pts)
+        syy = sum(p[1]*p[1] for p in pts)
+        sxy = sum(p[0]*p[1] for p in pts)
+        sx3 = sum(p[0]*(p[0]*p[0] + p[1]*p[1]) for p in pts)
+        sy3 = sum(p[1]*(p[0]*p[0] + p[1]*p[1]) for p in pts)
+        C = n*sxx - sx*sx
+        D = n*sxy - sx*sy
+        E = n*syy - sy*sy
+        G = 0.5 * (n*sx3 - sx*(sxx+syy))
+        H = 0.5 * (n*sy3 - sy*(sxx+syy))
+        den = C*E - D*D
+        # Identical / collinear samples (perfect tip, or no XY motion):
+        # scatter matrix is singular → centroid + rms radius, not /0.
+        scale = C*C + E*E
+        if abs(den) <= 1e-18 * max(scale, 1.0):
+            xc = sx / n
+            yc = sy / n
+            r2 = (sxx + syy) / n - xc*xc - yc*yc
+            return xc, yc, float(numpy.sqrt(max(r2, 0.)))
+        xc = (G*E - D*H) / den
+        yc = (C*H - D*G) / den
+        r2 = ((sxx+syy) - 2.*xc*sx - 2.*yc*sy)/n + xc*xc + yc*yc
+        return xc, yc, numpy.sqrt(max(r2, 0.))
+
+    def runout(self, cam, pipe_name, params, gcmd):
+        r_idx = self.pnp.r_index()
+        if r_idx is None:
+            raise gcmd.error("runout: no R axis for tool %s" % (self.pnp.active_tool.name,))
+        if getattr(cam, 'camera_xy', None) is None:
+            cur = self.pnp.get_position()
+            cx, cy = float(cur[0]), float(cur[1])
+            gcmd.respond_info(
+                "runout: camera_xy unset, using current XY (%.4f, %.4f)"
+                % (cx, cy))
+        else:
+            cx, cy =cam.camera_xy
+        cam.z_plane = params['z']
+        speed = params['speed']
+        nsteps = params['steps']
+        pos_min=params.get('pos_min',self.pnp.active_tool.r_stepper.pos_min)
+        pos_max=params.get('pos_max',self.pnp.active_tool.r_stepper.pos_max)
+        steps=numpy.linspace(pos_min,pos_max,nsteps).astype(float)
+        self.pnp.active_tool.tip.runout_radius = 0.
+        self.pnp.active_tool.tip.runout_phase = 0.
+        self.pnp.active_tool.tip.runout_data = []
+        pos = self.pnp.get_position()
+        pos[0], pos[1], pos[2] = float(cx), float(cy), float(params['z'])
+        pos[r_idx] = 0.
+        self.pnp.safe_move(pos, speed)
+        samples = []
+        xy = []
+        for k,r_k in enumerate(steps):
+            pos[r_idx] = float(r_k)
+            self.pnp.move_and_settle(pos, speed, params['settle'])
+            result = self.run_detect(cam, pipe_name, gcmd, params)
+            px, py = self.ensure_singular_result(result, gcmd, 'runout[%d]' % (k,))
+            dx, dy = cam.pixels_to_mm_offset(px, py, cam.z_plane)
+            x = float(cx) + dx
+            y = float(cy) + dy
+            samples.append((r_k, x, y))
+            xy.append((x, y))
+            gcmd.respond_info(
+                "runout[%d/%d]: R=%s pxy=(%.4f,%.4f) d=(%.4f,%.4f) xy=(%.4f,%.4f)" % (k+1, nsteps, r_k, px, py, dx, dy, x, y))
+        xc, yc, rho = self._fit_circle(xy)
+        self.pnp.active_tool.tip.runout_radius = float(rho)
+        self.pnp.active_tool.tip.runout_data = samples
+        if rho > 0.:
+            angles = []
+            for r_k, x, y in samples:
+                angles.append(float(numpy.atan2(y - yc, x - xc) - self.pnp.active_tool.r_to_rad(r_k)))
+            # unwrap around first sample
+            phi0 = float(angles[0])
+            phi = float(sum(phi0 + numpy.atan2(numpy.sin(a-phi0), numpy.cos(a-phi0))
+                        for a in angles) / len(angles))
+            self.pnp.active_tool.tip.runout_phase = float(self.pnp.active_tool.r_from_rad(phi))
+        gcmd.respond_info(
+            "runout %s: radius=%.4f phase=%.4f %s  center=(%.4f,%.4f)"
+            % (self.pnp.active_tool.tip.name, self.pnp.active_tool.tip.runout_radius,
+            self.pnp.active_tool.tip.runout_phase, self.pnp.active_tool.r_units, xc, yc))
+        pos[0], pos[1], pos[2] = float(cx), float(cy), 0.
+        pos[r_idx] = 0.
+        self.pnp.safe_move(pos, speed)
+
+    cmd_PNP_VISION_RUNOUT_help = (
+        "Spin loaded tip over the up-looking camera and fit live runout.")
+    def cmd_PNP_VISION_RUNOUT(self, gcmd):
+        cam = self.lookup_cam(gcmd.get('CAM', 'bottomcam'))
+        if not cam.looking_up:
+            raise gcmd.error(f"Camera {cam.name} is not up-looking")
+        tool = self.pnp.lookup_tool(None)
+        if tool is None:
+            raise gcmd.error("No tool loaded for runout")
+        if tool.tip is None:
+            raise gcmd.error(f"Tool {tool.short_name} has no tip loaded")
+        params = tool.tip.get_runout_params()
+        params['z'] = gcmd.get_float('Z', params.get('z', getattr(cam, 'def_z_plane', 0)))
+        ux, uy = cam.get_mmpx_on_z(params['z'])
+        upp = 0.5 * (abs(float(ux)) + abs(float(uy)))
+        if upp < 1e-12:
+            raise gcmd.error(f"Camera [{cam.name}] has unusable mm/px at Z={params['z']:g} (upp≈{upp:.5g}) — check PNP_CALIB_PXMM or config.")
+        # tol = gcmd.get_float('TOLERANCE', self.home_tolerance, above=0.)
+        params['steps']= gcmd.get_int('STEPS', 16, minval=3)
+        params['speed']= gcmd.get_float('SPEED', self.home_speed, above=0.)
+        params['settle']= gcmd.get_float('SETTLE', 0.2, minval=0.)
+        size_tol = gcmd.get_float('TOL', params.get('tol', 0.1), minval=0.)
+        pipe_name = gcmd.get('PIPELINE', params.get('pipeline', 'runout'))
+        params.update(self._size_params_from_mm(cam, params['z'], params, size_tol))
+        params['cx']=cam.cx
+        params['cy']=cam.cy
+        runtime = self.parse_runtime_params(gcmd,
+            skip=[ 'CAM', 'PIPELINE', 'STEPS', 'SPEED',
+                  'SETTLE', 'Z', 'TOL', 'LIGHT'])
+        params.update(runtime)
+        gcmd.respond_info(f"params {params}")
+        self.runout(cam, pipe_name, params, gcmd)
+
     def get_status(self, eventtime):
         return {
             'pipelines': list(self.pipelines.keys()),
             'last_detection': self.last_detection,
+            'last_home': self.last_home,
         }
 
 def load_config(config):

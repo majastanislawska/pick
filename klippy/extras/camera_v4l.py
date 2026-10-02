@@ -345,8 +345,7 @@ class V4L2Camera:
         self.looking_up = config.getchoice(
             'looking', {'up': True, 'down': False}, default='down')
         if self.looking_up:
-            self.camera_x = config.getfloat('camera_x', None)
-            self.camera_y = config.getfloat('camera_y', None)
+            self.camera_xy = config.getasteval('camera_xy', None)
         else:
             self.offset_x = config.getfloat('offset_x', 0.)
             self.offset_y = config.getfloat('offset_y', 0.)
@@ -775,14 +774,9 @@ class V4L2Camera:
     def move(self, newpos, speed):
         logging.info(f"v4Lcamera {self.name} move {newpos} {speed}")
         self.z_plane = float(newpos[2])
-        r_idx = self.pnp.r_index()
-        if r_idx is not None and r_idx < len(newpos):
-            self.rot = newpos[r_idx]
+        self.rot = newpos[self.pnp.r_index()]
         mpos = self.gcode_to_machine(newpos)
-        if r_idx is not None:
-            while len(mpos) <= r_idx:
-                mpos.append(0.)
-            mpos[r_idx] = self.rot
+        mpos[self.pnp.r_index()] = self.rot
         mpos[2] = 0
         self.pnp.next_transform.move(mpos, speed)
 
