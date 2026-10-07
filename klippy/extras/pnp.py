@@ -306,6 +306,18 @@ class PnPManager:
         self.reset_last_position()
         logging.info(f"pnp.select_tool done={self.get_position()} last={self.gcode_move.last_position}")
 
+    def lookup_fiducial(self, name='primary'):
+        """Return (name, dict) for fiducial from [pnp] config."""
+        if name is None:
+            return None, {}
+        key = (name or 'primary').strip().lower()
+        if key in ('primary', '1', 'a', 'p'):
+            return 'primary', self.fiducial_primary
+        if key in ('secondary', '2', 'b', 's'):
+            return 'secondary', self.fiducial_secondary
+        raise self.printer.command_error(
+            f"Unknown FIDUCIAL='{name}'. Use primary or secondary.")
+
     def reset_last_position(self):
         return self.gcode_move.reset_last_position()
 

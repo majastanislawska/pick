@@ -88,19 +88,6 @@ class PnPVision:
     def other_cameras(self,me):
         return [c for c in self.cams.values() if c is not me]
 
-    def _lookup_fiducial(self, name='primary'):
-        """Return (name, dict) for fiducial from [pnp] config."""
-        if name is None:
-            return None, {}
-        pnp = self.printer.lookup_object('pnp')
-        key = (name or 'primary').strip().lower()
-        if key in ('primary', '1', 'a', 'p'):
-            return 'primary', pnp.fiducial_primary
-        if key in ('secondary', '2', 'b', 's'):
-            return 'secondary', pnp.fiducial_secondary
-        raise self.printer.command_error(
-            f"Unknown FIDUCIAL='{name}'. Use primary or secondary.")
-
     def parse_runtime_params(self, gcmd, skip=[]):
         """G-code key=value (except skip) -> dict for pipeline defaults override."""
         params = {}
@@ -338,7 +325,8 @@ class PnPVision:
             raise gcmd.error("PIPELINE is required.")
         # fiducial have x,y,z and dia or w,h and optionally tol;
         # we use z for mm→px conversion and dia/w/h for auto size params
-        fid_name, params = self._lookup_fiducial(gcmd.get('FIDUCIAL', None))
+        fid_name, fid = self.pnp.lookup_fiducial(gcmd.get('FIDUCIAL', None))
+        params=fid.copy()
         #now update with overrides from commandline
         z = gcmd.get_float('Z', params.get('z', getattr(cam, 'def_z_plane', None)))
         params['dia'] = gcmd.get_float('DIA', params.get('dia', None))
@@ -407,7 +395,8 @@ class PnPVision:
         set_offset = gcmd.get_int('SET_OFFSET', 1)
         # fiducial have x,y,z and dia or w/h and optionally tol;
         # we use z for mm→px conversion and dia/w/h for auto size params
-        fid_name, params = self._lookup_fiducial(gcmd.get('FIDUCIAL', 'primary'))
+        fid_name, fid = self.pnp.lookup_fiducial(gcmd.get('FIDUCIAL', 'primary'))
+        params=fid.copy()
         #now update with overrides from commandline
         z = gcmd.get_float('Z', params.get('z', getattr(cam, 'def_z_plane', None)))
         fx = gcmd.get_float('X', params.get('x', None))
