@@ -33,8 +33,8 @@ class PnPVision:
             'err_mm': None,
         }
         self.home_speed = config.getfloat('homing_speed', 50.)
-        self.home_tolerance = config.getfloat('homing_tolerance', 0.05)
-        self.home_max_iter = config.getint('homing_max_iter', 8)
+        self.pinpoint_accuracy = config.getfloat('pinpoint_accuracy', 0.05)
+        self.max_tries = config.getint('max_tries', 8)
         webhooks = self.printer.lookup_object('webhooks')
         webhooks.register_endpoint("pnp/light", self._webhooks_light)
         webhooks.register_endpoint("pnp/px2mach", self._webhooks_px2mach)
@@ -240,6 +240,43 @@ class PnPVision:
             f"{label}: expected exactly 1 feature, got {err}. "
             f"Tighten PIPELINE filters")
 
+    def pinpoint_target(self, gcmd, startpos, cam, pipe_name, speed, settle, max_tries, accuracy, params, tag="pinpoint"):
+        """
+        Loop a pipeline until machine converges over a feature.
+        """
+        self.pnp.move_and_settle(startpos, speed, settle)
+        ret={}
+        z=startpos[2]
+        err = None
+        dx_mm = dy_mm = 0.
+        px = py = None
+        for i in range(max_tries):
+            result = self.run_detect(cam, pipe_name, gcmd, params)
+            px, py = self.ensure_singular_result(result, gcmd, f"{tag}[{i+1}]")
+            dx_mm, dy_mm = cam.pixels_to_mm_offset(px, py, z)
+            if cam.looking_up:
+                dx_mm = -dx_mm
+                dy_mm = -dy_mm
+            err = numpy.hypot(dx_mm, dy_mm).astype(float)
+            gcmd.respond_info(f"{tag}[{i+1}/{max_tries}]: px=({px:.2f},{py:.2f}) d_mm=({dx_mm:.4f},{dy_mm:.4f}) err={err:.4f}mm")
+            if err <= accuracy:
+                gcmd.respond_info(f"converged: err={err:.4f} <= ACCURACY={accuracy}")
+                ret['success'] = True
+                ret['pos'] = list(self.pnp.get_position())
+                ret['px'], ret['py'] = float(px), float(py)
+                ret['err_mm'] = err
+                break
+            pos = self.pnp.get_position()
+            (pos[0],pos[1])=(pos[0] + dx_mm, pos[1] + dy_mm,)
+            self.pnp.move_and_settle(pos, speed, settle)
+        else:
+            ret['success'] = False
+            ret['pos'] = list(self.pnp.get_position())
+            if px is not None:
+                ret['px'], ret['py'] = float(px), float(py)
+            ret['err_mm'] = err
+        return ret
+
     cmd_PNP_VISION_PIPELINE_help = "Define or update a vision pipeline"
     def cmd_PNP_VISION_PIPELINE(self, gcmd):
         """
@@ -348,10 +385,10 @@ class PnPVision:
         1) optional SET_GCODE_OFFSET X=0 Y=0
         2) move toolhead to fiducial nominal XY (Z unchanged)
         3) detect -> pixels_to_mm_offset (using fiducial nominal Z) -> jog
-        4) repeat until |err| <= TOLERANCE
+        4) repeat until |err| <= ACCURACY
         5) SET_GCODE_OFFSET so M114 shows fiducial (fx,fy) at this physical pose
 
-        Optional: TOLERANCE=0.05 MAX_ITER=8 SPEED=50 SETTLE=0.2 SET_OFFSET=1
+        Optional: ACCURACY=0.05 MAX_TRIES=8 SPEED=50 SETTLE=0.2 SET_OFFSET=1
         Size band: uses fiducial dia@z → r/min_r/max_r unless R=/DIA=/TOL= on console.
         Other pipeline runtime params are forwarded.
         """
@@ -363,8 +400,8 @@ class PnPVision:
         pipe_name = gcmd.get('PIPELINE', 'visual_home')
         if pipe_name not in self.pipelines:
             raise gcmd.error(f"Pipeline '{pipe_name}' does not exist. Register with PNP_VISION_PIPELINE first.")
-        tol = gcmd.get_float('TOLERANCE', self.home_tolerance, above=0.)
-        max_iter = gcmd.get_int('MAX_ITER', self.home_max_iter, minval=1)
+        accuracy = gcmd.get_float('ACCURACY', self.pinpoint_accuracy, above=0.)
+        max_tries = gcmd.get_int('MAX_TRIES', self.max_tries, minval=1)
         speed = gcmd.get_float('SPEED', self.home_speed, above=0.)
         settle = gcmd.get_float('SETTLE', 0.2, minval=0.)
         set_offset = gcmd.get_int('SET_OFFSET', 1)
@@ -399,31 +436,10 @@ class PnPVision:
         pos = self.pnp.get_position()
         gcmd.respond_info(f"home on {fid_name}: nominal XY=({fx:.4f},{fy:.4f}) Z_plane={z:g}")
         pos[0],pos[1],pos[2]=fx,fy,z
-        self.pnp.move_and_settle(pos, speed, settle)
-        err = None
-        dx_mm = dy_mm = 0.
-        cx = cy = None
-        for i in range(max_iter):
-            result = self.run_detect(cam, pipe_name, gcmd, params)
-            cx, cy = self.ensure_singular_result(result, gcmd, f"home[{i+1}]")
-            dx_mm, dy_mm = cam.pixels_to_mm_offset(cx, cy, z)
-            err = numpy.hypot(dx_mm, dy_mm).astype(float)
-            gcmd.respond_info(f"home[{i+1}/{max_iter}]: px=({cx:.2f},{cy:.2f}) d_mm=({dx_mm:.4f},{dy_mm:.4f}) err={err:.4f}mm")
-            if err <= tol:
-                gcmd.respond_info(f"converged: err={err:.4f} <= TOLERANCE={tol}")
-                break
-            pos = self.pnp.get_position()
-            (pos[0],pos[1])=(pos[0] + dx_mm, pos[1] + dy_mm,)
-            self.pnp.move_and_settle(pos, speed, settle)
-        else:
-            self.last_home['success'] = False
-            self.last_home['fiducial'] = fid_name
-            self.last_home['toolhead'] = list(toolhead.get_position()[:2])
-            self.last_home['gcode'] = list(self.pnp.get_position()[:2])
-            self.last_home['gcode_offset'] = None
-            self.last_home['err_mm'] = err
-            raise gcmd.error(f"PNP_VISION_HOME: not converged after {max_iter} iters (err={err:.4f}mm, tol={tol})")
-
+        self.last_home=self.pinpoint_target(gcmd,pos,cam, pipe_name, speed, settle, max_tries, accuracy, params, "home")
+        self.last_home['fiducial'] = fid_name
+        if self.last_home['success'] == False:
+            raise gcmd.error(f"PNP_VISION_HOME: not converged after {max_tries} iters (err={self.last_home['err_mm']:.4f}mm, accuracy={accuracy})")
         # Final re-check (no move) for reported residual
         result = self.run_detect(cam, pipe_name, gcmd, params)
         if result.get('kind') in ('circle', 'rect') and result.get('cx') is not None:
@@ -431,11 +447,9 @@ class PnPVision:
             dx_mm, dy_mm = cam.pixels_to_mm_offset(cx, cy, z)
             err = numpy.hypot(dx_mm, dy_mm).astype(float)
             gcmd.respond_info(f"final residual: px=({cx:.2f},{cy:.2f}) d_mm=({dx_mm:.4f},{dy_mm:.4f}) err={err:.4f}mm")
-
-        # pos = toolhead.get_position()
-        pos = self.pnp.get_position()
-        ox = pos[0] - fx
-        oy = pos[1] - fy
+        ox = self.last_home['pos'][0] - fx
+        oy = self.last_home['pos'][1] - fy
+        self.last_home['gcode_offset'] = [ox, oy]
         cmd=f'SET_GCODE_OFFSET X={ox:.6f} Y={oy:.6f}'
         if set_offset:
             self.gcode.run_script_from_command(cmd)
@@ -443,21 +457,6 @@ class PnPVision:
             gcmd.respond_info(cmd)
         else:
             gcmd.respond_info(f"SET_OFFSET=0 — would use: {cmd}")
-
-        self.last_detection['success'] = True
-        self.last_detection['pipeline'] = pipe_name
-        self.last_detection['cam'] = cam.name
-        self.last_detection['cx'] = cx
-        self.last_detection['cy'] = cy
-        self.last_detection['r'] = result.get('r') if result else None
-        self.last_detection['coords'] = [dx_mm, dy_mm]
-        self.last_home['success'] = True
-        self.last_home['fiducial'] = fid_name
-        self.last_home['toolhead'] = [pos[0], pos[1]]
-        self.last_home['gcode_offset'] = [ox, oy]
-        self.last_home['err_mm'] = err
-        self.last_home['fiducial_xy'] = [fx, fy]
-        self.last_home['fiducial_z'] = z
         gcmd.respond_info(f"PNP_VISION_HOME done on {fid_name} err={err:.4f}mm")
 
     def _fit_circle(self, pts):
@@ -564,7 +563,6 @@ class PnPVision:
         upp = 0.5 * (abs(float(ux)) + abs(float(uy)))
         if upp < 1e-12:
             raise gcmd.error(f"Camera [{cam.name}] has unusable mm/px at Z={params['z']:g} (upp≈{upp:.5g}) — check PNP_CALIB_PXMM or config.")
-        # tol = gcmd.get_float('TOLERANCE', self.home_tolerance, above=0.)
         params['steps']= gcmd.get_int('STEPS', 16, minval=3)
         params['speed']= gcmd.get_float('SPEED', self.home_speed, above=0.)
         params['settle']= gcmd.get_float('SETTLE', 0.2, minval=0.)
