@@ -276,11 +276,6 @@ class PnPManager:
         letter = self.r_gcode_letter
         return self._prev_G1(gcmd)
 
-    def _tool_key(self):
-        if self.active_tool is None:
-            return None
-        return self.active_tool.short_name.upper()
-
     def register_tool(self, tool):
         toolname = tool.short_name.upper()
         if toolname in self.tools:
@@ -329,21 +324,11 @@ class PnPManager:
             self.active_tool.move(newpos, speed)
         self.reset_last_position()
 
-    def safe_move(self, dest, speed):
-        curr = self.get_position()
-        newpos=curr.copy()
-        for i in range(len(dest)):
-            if dest[i] is not None:
-                newpos[i] = dest[i]
-        logging.info(f"pnp.safe_move {curr} -> {newpos} ({dest}) {speed}")
+    def safe_move(self, newpos, speed):
         if self.active_tool is None:
             self.next_transform.move(newpos, speed)
-            return
-        curr[2] = 0
-        self.active_tool.move(curr, speed)
-        self.active_tool.move(newpos[:2]+[0]+newpos[3:], speed)
-        self.active_tool.move(newpos, speed)
-        self.gcode_move.last_position = list(newpos)
+        else:
+            self.active_tool.safe_move(newpos, speed)
 
     def move_and_settle(self, pos, speed, settle):
         self.move(pos, speed)
@@ -409,12 +394,14 @@ class PnPManager:
         z_axis = None if self._active_z[0] is None else "%s%s"%(
             '+' if self._active_z[1] >= 0 else '-', self._active_z[0].get_name())
         if self.active_tool is None:
+            tool = None
             tip = "tool not selected"
         else:
+            tool = self.active_tool.short_name.upper()
             tip = str(getattr(self.active_tool, 'tip', 'tool dont support tips'))
         return {
             'tools': list(self.tools.keys()),
-            'active_tool': self._tool_key(),
+            'active_tool': tool,
             'active_tip': tip,
             'z_axis': z_axis,
             'r_axis': None if self._bound_r is None else self._bound_r.name,

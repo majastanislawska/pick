@@ -83,15 +83,6 @@ class PnPTool:
         self.tooltips[name] = tip
         return tip
 
-    def r_index(self):
-        return gcode.axis_map.get(self.pnp.r_gcode_letter)
-
-    def get_r(self, pos):
-        idx = self.r_index()
-        if idx is not None and idx < len(pos):
-            return pos[idx]
-        return 0.
-
     def r_to_rad(self, v):
         if self.r_units == 'deg':
             return v * math.pi / 180.
@@ -138,11 +129,20 @@ class PnPTool:
         return self.machine_to_gcode(mpos)
     def move(self, newpos, speed):
         logging.info(f"PNPTool {self.name} move {newpos} {speed}")
-        #here we can implement more sophisticated moves
-        #like honoring safe z on move
-        #or camera ignoring z moves and adjusting it's ref plane instead.
         mpos = self.gcode_to_machine(newpos)
         self.pnp.next_transform.move(mpos, speed)
+        self.pnp.reset_last_position()
+    def safe_move(self, dest, speed):
+        curr = self.get_position()
+        newpos=curr.copy()
+        for i in range(len(dest)):
+            if dest[i] is not None:
+                newpos[i] = dest[i]
+        logging.info(f"tool.safemove {curr} -> {newpos} ({dest}) {speed}")
+        curr[2] = 0
+        self.move(curr, speed)
+        self.move(newpos[:2]+[0]+newpos[3:], speed)
+        self.move(newpos, speed)
 
     def get_status(self, eventtime):
         return {

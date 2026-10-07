@@ -779,6 +779,16 @@ class V4L2Camera:
         mpos[self.pnp.r_index()] = self.rot
         mpos[2] = 0
         self.pnp.next_transform.move(mpos, speed)
+        self.pnp.reset_last_position()
+    def safe_move(self, dest, speed):
+        curr = self.get_position()
+        newpos=curr.copy()
+        for i in range(len(dest)):
+            if dest[i] is not None:
+                newpos[i] = dest[i]
+        logging.info(f"camera.safemove {curr} -> {newpos} ({dest}) {speed}")
+        #camera dosn't need safe_move, tools are retracted and camera is fixed, so just move to newpos
+        self.move(newpos, speed)
 
     def _parse_px_per_mm(self, raw):
         def one(item):
