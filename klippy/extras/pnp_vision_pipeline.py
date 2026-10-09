@@ -107,7 +107,7 @@ class detection_item:
             d['c_score'] = self.c_score
             d['n_pts'] = 0 if self.c is None else len(self.c)
         return d
-    def test_radial_symmetry(self, img, min_sym, n_rays=32, max_r=None):
+    def test_radial_symmetry(self, img, min_sym, n_rays=32, edge_threshold=64, max_r=None):
         """
         Optical radial symmetry: raycast from (cx,cy) on a gray/binary image,
         measure edge distances, score = 1 - 2·CV (clamped to [0,1]).
@@ -135,7 +135,7 @@ class detection_item:
                 if x < 0 or y < 0 or x >= w or y >= h:
                     found = step - 1
                     break
-                if abs(int(img[y, x]) - center_val) > 64:
+                if abs(int(img[y, x]) - center_val) > edge_threshold:
                     found = step
                     break
             if found is not None and found > 0:
@@ -435,7 +435,7 @@ class PnpVisionPipeline:
         """
         self.detected_circles = [i for i in self.detected_contours if i.test_enclosing_circle(float(min_fill))]
         if self.verbose: gcmd.respond_info(f"enclosing_circle({min_fill}) -> {len(self.detected_circles)} circles")
-    def _filter_radial_symmetry(self, gcmd, min_sym=0.75, n_rays=32, max_r=None):
+    def _filter_radial_symmetry(self, gcmd, min_sym=0.75, n_rays=32, edge_threshold=64, max_r=None):
         """
         Optical radial symmetry via raycast on current gray/binary frame.
         Runs on detected_circles if non-empty, else on detected_contours
@@ -445,7 +445,7 @@ class PnpVisionPipeline:
         """
         src = self.detected_circles if self.detected_circles else list(self.detected_contours)
         info=f"{len(src)} {'circles' if self.detected_circles else 'contours'}"
-        self.detected_circles = [i for i in src if i.test_radial_symmetry(self.img, float(min_sym), n_rays=int(n_rays), max_r=max_r)]
+        self.detected_circles = [i for i in src if i.test_radial_symmetry(self.img, float(min_sym), n_rays=int(n_rays), edge_threshold=edge_threshold, max_r=max_r)]
         if self.verbose: gcmd.respond_info(f"radial_symmetry({min_sym}, {n_rays}) {info} -> {len(self.detected_circles)} circles")
     def _filter_blob_circles(self, gcmd, min_r=10., max_r=100.,
                              min_circularity=0.7, min_convexity=0.8,
