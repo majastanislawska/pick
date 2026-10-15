@@ -101,7 +101,17 @@ class PnPVision:
             except ValueError: params[k.lower()] = val_str
         return params
 
-    def _size_params_from_mm(self, cam, z, params, tol=0.1):
+    def get_size_params(self, gcmd, params, skip):
+        params['dia'] = gcmd.get_float('DIA', params.get('dia', None))
+        params['w'] = gcmd.get_float('W', params.get('w', None))
+        params['h'] = gcmd.get_float('H', params.get('h', None))
+        params['rot'] = gcmd.get_float('ROT', params.get('rot', None))
+        params['tol'] = gcmd.get_float('TOL', params.get('tol', 0.1), minval=0.)
+        params['rot_tol'] = gcmd.get_float('ROT_TOL', params.get('rot_tol', None))
+        skip.extend(['DIA', 'W', 'H', 'ROT', 'TOL', 'ROT_TOL'])
+        return skip
+
+    def size_params_from_mm(self, cam, z, params, tol=0.1):
         """
         Convert physical sizes (mm) at z_plane → pipeline params (px).
 
@@ -331,18 +341,11 @@ class PnPVision:
         params=fid.copy()
         #now update with overrides from commandline
         z = gcmd.get_float('Z', params.get('z', getattr(cam, 'def_z_plane', None)))
-        params['dia'] = gcmd.get_float('DIA', params.get('dia', None))
-        params['w'] = gcmd.get_float('W', params.get('w', None))
-        params['h'] = gcmd.get_float('H', params.get('h', None))
-        params['rot'] = gcmd.get_float('ROT', params.get('rot', None))
-        params['rot_tol'] = gcmd.get_float('ROT_TOL', params.get('rot_tol', None))
-        size_tol = gcmd.get_float('TOL', params.get('tol', 0.1), minval=0.)
-        params= self._size_params_from_mm(cam, z, params, size_tol)
+        skip= self.get_size_params(gcmd, params, ['CAM', 'PIPELINE', 'FIDUCIAL', 'Z'])
+        params= self.size_params_from_mm(cam, z, params, params['tol'])
         params['cx']=cam.cx
         params['cy']=cam.cy
-        runtime = self.parse_runtime_params(gcmd,
-            skip=['CAM', 'PIPELINE', 'FIDUCIAL', 'Z', 'DIA', 'W', 'H',
-                   'ROT', 'ROT_TOL', 'TOL', 'LIGHT'])
+        runtime = self.parse_runtime_params(gcmd, skip)
         params.update(runtime)
         keys = ', '.join(
                 f'{k}={v:.3f}' if isinstance(v, float) else f'{k}={v}'
@@ -401,24 +404,15 @@ class PnPVision:
         z = gcmd.get_float('Z', params.get('z', getattr(cam, 'def_z_plane', None)))
         fx = gcmd.get_float('X', params.get('x', None))
         fy = gcmd.get_float('Y', params.get('y', None))
-        params['dia'] = gcmd.get_float('DIA', params.get('dia', None))
-        params['w'] = gcmd.get_float('W', params.get('w', None))
-        params['h'] = gcmd.get_float('H', params.get('h', None))
-        params['rot'] = gcmd.get_float('ROT', params.get('rot', None))
-        params['rot_tol'] = gcmd.get_float('ROT_TOL', params.get('rot_tol', None))
-        size_tol = gcmd.get_float('TOL', params.get('tol', 0.1), minval=0.)
-
         ux, uy = cam.get_mmpx_on_z(z)
         upp = 0.5 * (abs(float(ux)) + abs(float(uy)))
         if upp < 1e-12:
             raise gcmd.error(f"Camera [{cam.name}] has unusable mm/px at Z={z:g} (upp≈{upp:.5g}) — check PNP_CALIB_PXMM or config.")
-        params= self._size_params_from_mm(cam, z, params, size_tol)
+        skip= self.get_size_params(gcmd, params, ['CAM', 'PIPELINE', 'FIDUCIAL', 'Z'])
+        params= self.size_params_from_mm(cam, z, params, params['tol'])
         params['cx']=cam.cx
         params['cy']=cam.cy
-        runtime = self.parse_runtime_params(gcmd,
-            skip=['CAM', 'PIPELINE', 'FIDUCIAL', 'TOLERANCE',
-                  'MAX_ITER', 'SPEED', 'SETTLE', 'SET_OFFSET',
-                  'TOL', 'DIA', 'Z', 'W', 'H', 'ROT', 'ROT_TOL','LIGHT'])
+        runtime = self.parse_runtime_params(gcmd, skip)
         params.update(runtime)
         toolhead = self.printer.lookup_object('toolhead')
         # Nominal approach — XY only; keep toolhead Z (camera look height)
@@ -474,7 +468,7 @@ class PnPVision:
         xc = (G*E - D*H) / den
         yc = (C*H - D*G) / den
         r2 = ((sxx+syy) - 2.*xc*sx - 2.*yc*sy)/n + xc*xc + yc*yc
-        return xc, yc, numpy.sqrt(max(r2, 0.))
+        return xc, yc, float(numpy.sqrt(max(r2, 0.)))
 
     def runout(self, cam, pipe_name, params, gcmd):
         r_idx = self.pnp.r_index()
@@ -545,6 +539,9 @@ class PnPVision:
         if tool.tip is None:
             raise gcmd.error(f"Tool {tool.short_name} has no tip loaded")
         params = tool.tip.get_runout_params()
+        pipe_name = gcmd.get('PIPELINE', params.get('pipeline', 'runout'))
+        if pipe_name not in self.pipelines:
+            raise gcmd.error(f"Pipeline '{pipe_name}' does not exist. Register with PNP_VISION_PIPELINE first.")
         params['z'] = gcmd.get_float('Z', params.get('z', getattr(cam, 'def_z_plane', 0)))
         ux, uy = cam.get_mmpx_on_z(params['z'])
         upp = 0.5 * (abs(float(ux)) + abs(float(uy)))
@@ -553,14 +550,11 @@ class PnPVision:
         params['steps']= gcmd.get_int('STEPS', 16, minval=3)
         params['speed']= gcmd.get_float('SPEED', self.home_speed, above=0.)
         params['settle']= gcmd.get_float('SETTLE', 0.2, minval=0.)
-        size_tol = gcmd.get_float('TOL', params.get('tol', 0.1), minval=0.)
-        pipe_name = gcmd.get('PIPELINE', params.get('pipeline', 'runout'))
-        params.update(self._size_params_from_mm(cam, params['z'], params, size_tol))
+        skip = self.get_size_params(gcmd, params, ['CAM', 'PIPELINE', 'Z', 'STEPS', 'SPEED','SETTLE'])
+        params= self.size_params_from_mm(cam, params['z'], params, params['tol'])
         params['cx']=cam.cx
         params['cy']=cam.cy
-        runtime = self.parse_runtime_params(gcmd,
-            skip=[ 'CAM', 'PIPELINE', 'STEPS', 'SPEED',
-                  'SETTLE', 'Z', 'TOL', 'LIGHT'])
+        runtime = self.parse_runtime_params(gcmd, skip)
         params.update(runtime)
         gcmd.respond_info(f"params {params}")
         self.runout(cam, pipe_name, params, gcmd)
