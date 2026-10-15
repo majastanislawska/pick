@@ -78,12 +78,14 @@ class PnPVision:
         logging.info(f"register_camera: {name} {cam.resolution}")
         self.cams[name.upper()] = cam
 
-    def lookup_cam(self, cam_name):
+    def lookup_cam(self, cam_name, up=None):
         key = cam_name.upper()
         if key not in self.cams:
-            raise self.printer.command_error(
-                f"Unknown camera '{cam_name}'. Known: {list(self.cams.keys())}")
-        return self.cams[key]
+            raise self.printer.command_error(f"Unknown camera '{cam_name}'. Known: {list(self.cams.keys())}")
+        cam=self.cams[key]
+        if up is None:           return cam
+        elif up==cam.looking_up: return cam
+        else: raise self.printer.command_error(f"Can't use'{cam_name}' here. Camera needs to be looking {["down","up"][up]}")
 
     def other_cameras(self,me):
         return [c for c in self.cams.values() if c is not me]
@@ -380,9 +382,7 @@ class PnPVision:
         Size band: uses fiducial dia@z → r/min_r/max_r unless R=/DIA=/TOL= on console.
         Other pipeline runtime params are forwarded.
         """
-        cam = self.lookup_cam(gcmd.get('CAM', 'topcam'))
-        if cam.looking_up:
-            raise gcmd.error(f"Can't use up looking camera")
+        cam = self.lookup_cam(gcmd.get('CAM', 'topcam'), False)
         #need another validation for tool?
         self.pnp.select_tool(cam,False)
         pipe_name = gcmd.get('PIPELINE', 'visual_home')
@@ -538,9 +538,7 @@ class PnPVision:
     cmd_PNP_VISION_RUNOUT_help = (
         "Spin loaded tip over the up-looking camera and fit live runout.")
     def cmd_PNP_VISION_RUNOUT(self, gcmd):
-        cam = self.lookup_cam(gcmd.get('CAM', 'bottomcam'))
-        if not cam.looking_up:
-            raise gcmd.error(f"Camera {cam.name} is not up-looking")
+        cam = self.lookup_cam(gcmd.get('CAM', 'bottomcam'),True)
         tool = self.pnp.lookup_tool(None)
         if tool is None:
             raise gcmd.error("No tool loaded for runout")
