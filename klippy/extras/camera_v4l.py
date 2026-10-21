@@ -247,8 +247,8 @@ class VisionWorker(threading.Thread):
             rectification_matrix is None or virtual_camera_matrix is None):
                 self.map1, self.map2 = None,None
                 return 'clearing_maps'
-        self.cx = virtual_camera_matrix[0, 2]
-        self.cy = virtual_camera_matrix[1, 2]
+        self.cx = float(virtual_camera_matrix[0, 2])
+        self.cy = float(virtual_camera_matrix[1, 2])
         self.cw=int(virtual_camera_matrix[0, 0])
         self.ch=int(virtual_camera_matrix[1, 1])
         self.map1, self.map2 = cv2.initUndistortRectifyMap(
@@ -406,8 +406,8 @@ class V4L2Camera:
         self.dist_coeffs = numpy.array(dist_list, dtype=numpy.float32)
         V = config.getasteval('virtual_camera_matrix', None)
         self.virt_matrix = None if V is None else numpy.array(V, dtype=numpy.float32).reshape((3, 3))
-        self.cx=width/2 if V is None else self.virt_matrix[0, 2]
-        self.cy=height/2 if V is None else self.virt_matrix[1, 2]
+        self.cx=width/2. if V is None else float(self.virt_matrix[0, 2])
+        self.cy=height/2. if V is None else float(self.virt_matrix[1, 2])
         rectification_matrix_list = config.getasteval('rectification_matrix', [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]])
         self.rectif_matrix = numpy.array(rectification_matrix_list, dtype=numpy.float32).reshape((3, 3))
         self.px_per_mm=config.getasteval('px_per_mm', None)
@@ -632,26 +632,35 @@ class V4L2Camera:
 
     def set_light(self, s=None, color=None, output_s=None):
         """Remember s/color and transmit. output_s overrides level without
-        changing the remembered working brightness (used for idle / exclusive)."""
+        changing the remembered working brightness (used for idle / exclusive).
+        Transmit is synced to toolhead print time (SET_LED SYNC=1) so
+        idle_timeout resets even when RGBW is unchanged."""
         if s is not None:
             self._light_s = max(0., min(1., float(s)))
         if color is not None:
             self._light_color = color
         level = self._light_s if output_s is None else max(0., min(1., float(output_s)))
+        helper = None
+        rgbw = None
+        changed = False
         if self.light is None:
             if level > 0.:
                 raise self.printer.command_error(
                     "Camera [%s] has no light: configured" % (self.name,))
             self._output_s = level
-            return False
-        rgbw = map_rgb_to_led(self._light_color, level, self.light_channels)
-        if rgbw == self._last_rgbw and level == self._output_s:
-            return False
-        self.light.led_helper._set_color(None, rgbw)
-        self.light.led_helper._check_transmit(None)
-        self._last_rgbw = rgbw
-        self._output_s = level
-        return True
+        else:
+            rgbw = map_rgb_to_led(self._light_color, level, self.light_channels)
+            changed = rgbw != self._last_rgbw or level != self._output_s
+            self._last_rgbw = rgbw
+            self._output_s = level
+            helper = self.light.led_helper
+        def lookahead_bgfunc(print_time):
+            if changed and helper is not None:
+                helper._set_color(None, rgbw)
+                helper._check_transmit(print_time)
+        self.printer.lookup_object('toolhead').register_lookahead_callback(
+            lookahead_bgfunc)
+        return changed
 
     def acquire_light(self, s, color, hold=True, settle=True):
         """Turn this camera's light on (and every other camera's off)."""
@@ -660,8 +669,11 @@ class V4L2Camera:
             other.set_light(output_s=getattr(other, 'light_idle', 0.))
         changed = self.set_light(s=s, color=color)
         want = self._output_s
+        toolhead = self.printer.lookup_object('toolhead')
         if settle and changed and want > 0. and self.light_settle > 0.:
-            self.reactor.pause(self.reactor.monotonic() + self.light_settle)
+            toolhead.dwell(self.light_settle)
+        if changed:
+            toolhead.wait_moves()
         if hold and want > 0. and self.light_hold > 0.:
             self._bump_light_hold()
         else:
@@ -727,13 +739,12 @@ class V4L2Camera:
                 alpha=a, newImgSize=(self.frame_width, self.frame_height))
             self.virt_matrix[0, 2] = self.virt_matrix[0, 0] / 2.0  # force cx to center
             self.virt_matrix[1, 2] = self.virt_matrix[1, 1] / 2.0  # force cy to center
-            self.cx = self.virt_matrix[0, 2]
-            self.cy = self.virt_matrix[1, 2]
-            gcmd.respond_info(f"ROI={roi} c={(self.cx,self.cy)}")
-        gcmd.respond_info(f'V="{None if self.virt_matrix is None else self.virt_matrix.tolist()}"')
         gcmd.respond_info(self.generate_maps())
+        gcmd.respond_info(f'V="{None if self.virt_matrix is None else self.virt_matrix.tolist()}"')
 
     def generate_maps(self):
+        self.cx=self.frame_width/2. if self.virt_matrix is None else float(self.virt_matrix[0, 2])
+        self.cy=self.frame_height/2. if self.virt_matrix is None else float(self.virt_matrix[1, 2])
         return self.vision_worker_thread.generate_maps(
             self.camera_matrix,self.dist_coeffs,
             self.rectif_matrix,self.virt_matrix)
@@ -817,7 +828,10 @@ class V4L2Camera:
         if A is None:
             return None
         p = A.dot([float(dx), float(dy)])
-        return float(p[0]), float(p[1])
+        if self.looking_up:
+            return float(p[0]), float(p[1])
+        else:
+            return -float(p[0]), float(p[1])
 
     def px_to_mm_delta(self, dcx, dcy, z=None):
         if z is None:
@@ -856,9 +870,7 @@ class V4L2Camera:
         out = self.px_to_mm_delta(dx_px, dy_px, z_working_height)
         if out is None:
             return 0., 0.
-        if self.looking_up:
-            return out
-        return -out[0], -out[1]
+        return out
 
     def get_status(self, eventtime):
         return {

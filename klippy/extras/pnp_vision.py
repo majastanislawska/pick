@@ -85,7 +85,7 @@ class PnPVision:
         if cam.looking_up:
             web_request.send({'dx':-dx, 'dy':-dy})
         else:
-            web_request.send({'dx':dx, 'dy':dy})
+            web_request.send({'dx':-dx, 'dy':-dy})
 
     def register_camera(self, name, cam):
         logging.info(f"register_camera: {name} {cam.resolution}")
@@ -270,9 +270,6 @@ class PnPVision:
             result = self.run_detect(cam, pipe_name, gcmd, params)
             px, py = self.ensure_singular_result(result, gcmd, f"{tag}[{i+1}]")
             dx_mm, dy_mm = cam.pixels_to_mm_offset(px, py, z)
-            if cam.looking_up:
-                dx_mm = -dx_mm
-                dy_mm = -dy_mm
             err = numpy.hypot(dx_mm, dy_mm).astype(float)
             gcmd.respond_info(f"{tag}[{i+1}/{max_tries}]: px=({px:.2f},{py:.2f}) d_mm=({dx_mm:.4f},{dy_mm:.4f}) err={err:.4f}mm")
             if err <= accuracy:
@@ -283,7 +280,7 @@ class PnPVision:
                 ret['err_mm'] = err
                 break
             pos = self.pnp.get_position()
-            (pos[0],pos[1])=(pos[0] + dx_mm, pos[1] + dy_mm,)
+            (pos[0],pos[1])=(pos[0] - dx_mm, pos[1] - dy_mm,)
             self.pnp.move_and_settle(pos, speed, settle)
         else:
             ret['success'] = False
@@ -724,7 +721,7 @@ class PnPVision:
             return
         def make_px(x,y):
             dx,dy=cam.mm_to_px_delta(x,y, z)
-            return (int(round(cam.cx + dx)), int(round(cam.cy - dy)))
+            return (int(round(cam.cx - dx)), int(round(cam.cy + dy)))
         c0=[c for c in holes if c.get('c0',False)][0]
         c1=[c for c in holes if c.get('c1',False)][0]
         c0_px = make_px(c0['mx'],c0['my'])

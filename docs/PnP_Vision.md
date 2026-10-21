@@ -191,7 +191,7 @@ PNP_VISION_PIPELINE NAME=fiducial LIGHT=0.8
 ```
 
 - `NAME` — pipeline id used by DETECT / CALIB / HOME
-- `LIGHT` — optional; applied in `run_detect` *before* the snapshot (not a filter). Same tokens as `CAM_LIGHT`. DETECT/HOME may override (`LIGHT=0.4` merges onto the pipeline spec). Turns peer cameras off.
+- `LIGHT` — optional; applied in `run_detect` *before* the snapshot (not a filter). Same tokens as `CAM_LIGHT`. DETECT/HOME may override (`LIGHT=0.4` merges onto the pipeline spec). Turns peer cameras off. PWM is queued on the toolhead; `acquire_light` does `dwell(light_settle)` then `wait_moves()` so the snap is after the LED actually turns on.
 - `PARAMS` — `key:value;…` defaults (referenced by name inside `STEPS`)
 - `STEPS` — `|`-separated filters: `name(arg,arg,…)`
 
