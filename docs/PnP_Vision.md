@@ -45,16 +45,16 @@ See also [G-Codes](G-Codes.md#pnp_vision) for a command reference.
 - pipeline steps are parsed by regexp to list of tuples (name, [parameters..])
 - those are evaluated in `run()`: method `_filter_{name}` is called
 - `gcmd` is pushed as first parameter so filter can do `gcmd.respond_info()`
-- remaining are substituted with values from `active_params` or cast to int/float if possible or left as strings (_filters can raise an error if they dont like type)
+- remaining are substituted with values from `active_params` or cast to int/float if possible or left as strings (_filters can raise an error if they don't like type)
 - `active_params` dict is created from pipeline's`PARAMS=` (which work as defaults) updated by `runtime_params` dict passed to `run()` by caller.
-- caller typically gathers `runtime_params` from config section of what it's trying to detect (ex fiducial) and it's own gcode parmeters
+- caller typically gathers `runtime_params` from config section of what it's trying to detect (ex fiducial) and it's own gcode parameters
 
 ### Parameters conventions
 
-All gcode commands can take arbitrary number of key=value pairs that are then passed in `params` dict to pipeline, method `parse_runtime_params()` does that. This can be used to either set params for pipeline or owerwrite values set elsewhere.
-Some of them are picked earlier and passed through `_size_params_from_mm()` to compute additional parameters using current camera pose (z height) those are pixel units `min_`/`max_` parameter pairs.
-Some parameters may orginate from config file sections (fiducial sizes, nozzle tip diameters etc), those are passed through `_size_params_from_mm()` too.
-But `_size_params_from_mm()` does not overwrite any existing config params (you can put pixel param to config to refine computed value)
+All gcode commands can take arbitrary number of key=value pairs that are then passed in `params` dict to pipeline, method `parse_runtime_params()` does that. This can be used to either set params for pipeline or overwrite values set elsewhere.
+Some of them are picked earlier and passed through `size_params_from_mm()` to compute additional parameters using current camera pose (z height) those are pixel units `min_`/`max_` parameter pairs.
+Some parameters may originate from config file sections (fiducial sizes, nozzle tip diameters etc), those are passed through `size_params_from_mm()` too.
+But `size_params_from_mm()` does not overwrite any existing config params (you can put pixel param to config to refine computed value)
 
 Commandline params have precedence over any other source.
 
@@ -62,18 +62,18 @@ Commandline params have precedence over any other source.
 | --- | --- | --- | --- |
 | `cx`,`cy` | code | (pixels) typically camera principal point but sometimes center of ROI (expected target position) | `mask_circ`, `mask_rect`, `pick_nearest` |
 | `VERBOSE` | gcode | Set to `1` to make pipeline more noisy (shows params substitutions) | |
-| `LIGHT` | pipeline,gcode | default lightspec if on pipeline or override of it if on GCODE commad | `run_detect()` |
-| `TOL` | config,gcode | a 'tolerance': sets spread for `min_`/`max_` parameter pairs | `_size_params_from_mm` |
-| `DIA` | config,gcode | diameter in mm for circle detection pipelines (fiducials) | `_size_params_from_mm` |
-| `W` | config,gcode | width in mm for rect detection pipelines | `_size_params_from_mm` |
-| `H` | config,gcode | height in mm for rect detection pipelines | `_size_params_from_mm` |
+| `LIGHT` | pipeline,gcode | default lightspec if on pipeline or override of it if on GCODE command | `run_detect()` |
+| `TOL` | config,gcode | a 'tolerance': sets spread for `min_`/`max_` parameter pairs | `size_params_from_mm` |
+| `DIA` | config,gcode | diameter in mm for circle detection pipelines (fiducials) | `size_params_from_mm` |
+| `W` | config,gcode | width in mm for rect detection pipelines | `size_params_from_mm` |
+| `H` | config,gcode | height in mm for rect detection pipelines | `size_params_from_mm` |
 | `ROT` | config,gcode | rotation (deg) for rect detection pipelines | `filter_rects_rot`,`filter_square_rot` |
 | `ROT_TOL` | config,gcode | tolerance for rotation for rect detection pipelines | `filter_rects_rot`,`filter_rects_rot` |
-| `min_area`,`max_area` | `_size_params_from_mm` | area in px for contour detection filters (either  Pi * (r_px)^2 or w_px * h_px) | `find_contours` |
-| `min_r`, `max_r` | `_size_params_from_mm` | radius in px for circle detection | `find_contours_by_r`, `filter_circles_r` |
-| `min_w_px`, `max_w_px` | `_size_params_from_mm` | width in px for rect detection | `filter_rects_width` |
-| `min_h_px`, `max_h_px` | `_size_params_from_mm` | height in px for rect detection | |
-| `min_aspect`, `max_aspect` | `_size_params_from_mm` | aspect ratio for rect detection | `filter_rects_aspect` |
+| `min_area`,`max_area` | `size_params_from_mm` | area in px for contour detection filters (either  `Pi * (r_px)^2` or `w_px * h_px`) | `find_contours` |
+| `min_r`, `max_r` | `size_params_from_mm` | radius in px for circle detection | `find_contours_by_r`, `filter_circles_r` |
+| `min_w_px`, `max_w_px` | `size_params_from_mm` | width in px for rect detection | `filter_rects_width` |
+| `min_h_px`, `max_h_px` | `size_params_from_mm` | height in px for rect detection | |
+| `min_aspect`, `max_aspect` | `size_params_from_mm` | aspect ratio for rect detection | `filter_rects_aspect` |
 
 ## Coordinate conventions
 
@@ -92,7 +92,7 @@ Commandline params have precedence over any other source.
 # optional defaults
 # calib_speed: 50
 # home_tolerance: 0.05
-# home_max_iter: 8
+# max_tries: 8
 
 [camera_v4l topcam]
 device: /dev/video0
@@ -155,7 +155,7 @@ Toggle overlay, crosshair HUD, and FPS text on the stream.
 
 Same `LIGHT=` parser as pipelines: a float is brightness, a 3/4/6/8-digit
 hex string is RGB or RGBW (no bare `#` — that is a G-code comment)
-if string start with K rest is white temerature (K6500).
+if string start with K rest is white temperature (K6500).
 Both may be combined: `LIGHT=0.8`, `LIGHT=F80`, `LIGHT=0.8,FFF`.
 
 Turns this camera’s light on and the other cameras’ lights to their
@@ -198,8 +198,8 @@ PNP_VISION_PIPELINE NAME=fiducial LIGHT=0.8
 Arguments that match a `PARAMS` key (case-insensitive) are substituted
 with that value; otherwise numbers are parsed as int/float and other
 tokens stay as strings.
-Gcode comands that use pipelines can pass arbitrary key=value pairs that are also be used for substitution of `args` in `STEPS`. they have higher preference than `PARAMS` defaults and will overwrite those.
-Some commands pull key=value pairs for substitutiion from config file
+Gcode commands that use pipelines can pass arbitrary key=value pairs that are also be used for substitution of `args` in `STEPS`. they have higher preference than `PARAMS` defaults and will overwrite those.
+Some commands pull key=value pairs for substitution from config file
 
 Pipeline working state:
 
@@ -209,17 +209,22 @@ Pipeline working state:
 | `detected_contours` | `find_contours*` | symmetry / draw_contours |
 | `detected_circles` | circularity / enclosing / radial / blob / dist_peaks | pick / draw / result |
 | `detected_rects` | rectilinear* / filters | draw_rects / classify |
-| `image_stash` | stash / recall | branching preprocessing |
+| `image_stash` | `stash` / `recall` / `mask_*` / `bitwise_*` | named images **and** binary masks |
+
+The working frame is either BGR (camera default) or 1-channel gray. `gray()` and `color()`/`bgr()` error if the frame is already in the target form. `find_contours*`, `otsu` / `threshold` / `canny` / `blob_circles` / `dist_peaks` need gray; `mask_hsv` / `mask_lab` and `draw_*` need BGR.
 
 Typical flow:
 
 ```text
-preprocess (blur, gray, threshold, morph, mask)
+preprocess (blur, adjust, clahe, gray, threshold, morph)
+  → mask_*  (stash 0/255, does not change img)
+      → bitwise_and/or/xor/not  (combine stashes)
+      → apply_mask / fill / use_mask
   → find_contours / find_contours_by_r
       → circular_symmetry / enclosing_circle / radial_symmetry
     OR blob_circles / dist_peaks   (no contour path)
-  → filter_circles_r / filter_circles_score
-  → make_rects + filter_rects_*
+  → filter_circles_r / filter_circles_score / merge_concentric
+  → make_rects + filter_rects_* + merge_rects
   → sort_proximity / pick_nearest
   → color() + draw_*   (for overlay)
 ```
@@ -232,16 +237,21 @@ Names are as used in `STEPS` (without the `_filter_` prefix).
 
 | Filter | Args | Description |
 | --- | --- | --- |
+| `adjust(brightness[, contrast])` | β −255…255, α default 1 (typ. 0…3) | `α·(I−128)+128+β` via `addWeighted`. 1 / 0 = identity |
 | `blurmedian(size)` | odd kernel size | Median blur |
-| `blurgaussian(size)` | odd kernel size | Gaussian blur |
-| `gray()` | — | BGR → gray |
-| `color()` | — | Gray → BGR (needed before color draws if pipeline went gray) |
-| `invert()` | — | Bitwise NOT |
-| `threshold(t[, max[, method]])` | default t=128, max=255 | Fixed threshold |
-| `otsu([t[, max[, method]]])` | t ignored by Otsu, default 0 | Otsu threshold |
-| `threshmean(block, c[, max])` | block odd, c offset | Adaptive mean |
-| `threshgaus(block, c[, max])` | block odd, c offset | Adaptive Gaussian |
-| `canny([t1[, t2[, pertureSize[, L2gradient]]]])` | default 50, 150, 3, 0 | Canny edges |
+| `blurgausian(size[, sigmaX[, sigmaY]])` | odd kernel | Gaussian blur |
+| `gray()` | — | BGR → luma. Errors if already gray |
+| `color()` / `bgr()` | — | Gray → BGR. Errors if already BGR. Needed before `draw_*` |
+| `invert()` | — | Bitwise NOT of the **frame** (not a stashed mask) |
+| `equalize_hist()` | — | Gray: `equalizeHist`. BGR: per-channel (hue can shift) |
+| `clahe([size[, clip]])` | default tile 8, clip 5 | Gray: CLAHE on luma. BGR: CLAHE on Lab **L** only (a/b kept) |
+| `normalize([alpha[, beta]])` | default 0…255 | `NORM_MINMAX` |
+| `bilateral(d, sigCol, sigSiz)` | — | Bilateral filter |
+| `threshold(t[, max[, method]])` | default t=128, max=255 | Fixed threshold (gray) |
+| `otsu([t[, max[, method]]])` | t ignored by Otsu, default 0 | Otsu threshold (gray) |
+| `threshmean(block, c[, max])` | block odd, c offset | Adaptive mean (gray) |
+| `threshgaus(block, c[, max])` | block odd, c offset | Adaptive Gaussian (gray) |
+| `canny([t1[, t2[, apertureSize[, L2gradient]]]])` | default 50, 150, 3, 0 | Canny edges (gray) |
 
 ##### Morphology
 
@@ -256,20 +266,47 @@ Names are as used in `STEPS` (without the `_filter_` prefix).
 
 ##### ROI / color masks
 
+`mask_*` **do not change `img`**. They write a 0/255 mask into `image_stash` (default slot `mask`). Combine slots with `bitwise_*`, then consume with `apply_mask` / `fill` / `use_mask`. `invert=1` flips the mask before stashing. A string in the invert position is treated as the slot name (`mask_centcirc(200, roi)`).
+
+`mask_hsv` / `mask_lab` convert from BGR locally (the frame stays BGR).
+
 | Filter | Args | Description |
 | --- | --- | --- |
-| `mask_hsv(h_min,h_max,s_min,s_max,v_min,v_max[,invert])` | H 0–180, S/V 0–255; invert=0/1 | Keep pixels in HSV range |
-| `mask_rect(x,y,w,h[,invert])` | center (x,y), full size w×h | Rectangular ROI mask |
-| `mask_centrect(w[,h[,invert]])` | size around optical center; h defaults to w | Rect ROI at principal point |
-| `mask_circ(cx,cy,radius[,invert])` | circle ROI | Keep disk at (cx,cy) |
-| `mask_centcirc(radius[,invert])` | circle at optical center | Disk at principal point |
+| `mask_hsv(h_min,h_max,s_min,s_max,v_min,v_max[,invert[,name]])` | H 0–180, S/V 0–255 | Pixels in HSV range → stash |
+| `mask_lab(l_min,l_max[,a_min,a_max,b_min,b_max[,invert[,name]]])` | L 0–255; a/b default 0–255, 128=neutral | Lab `inRange` → stash. `mask_lab(0,40)` is black |
+| `mask_rect(x,y,w,h[,invert])` | center (x,y), full size w×h | Rectangular ROI |
+| `mask_centrect(w[,h[,invert]])` | h defaults to w | Rect ROI at principal point |
+| `mask_circ(cx,cy,radius[,invert])` | — | Disk at (cx,cy) |
+| `mask_centcirc(radius[,invert])` | — | Disk at principal point |
+
+##### Mask algebra / apply
+
+Stash names in `STEPS` are plain identifiers (`tape`, `roi`, `mask`). `dst` defaults to the first operand (`a`).
+
+| Filter | Args | Description |
+| --- | --- | --- |
+| `bitwise_and(a, b[, dst])` | two stash names | AND two masks; write `dst` (`dst` defaults to `a`) |
+| `bitwise_or(a, b[, dst])` | — | OR two masks |
+| `bitwise_xor(a, b[, dst])` | — | XOR two masks |
+| `bitwise_not([a[, dst]])` | default `a=mask` | Invert a **stash** (not the frame) |
+| `apply_mask([name])` | default `mask` | `img AND img` with stashed `mask=` (zeros outside) |
+| `use_mask([name])` | default `mask` | Replace `img` with the 0/255 mask (now gray) |
+| `fill([name[, other]])` | default `mask`, `white` | Paint `other` onto `img` **in place** where mask≠0. Fuzzy outside stays |
+| `add(name[, other])` | `other`: stash / `black`/`white`/`gray` / hex / `inv` / scalar | Saturating add on `img`, masked. New dst → zeros outside |
+| `subtract(name[, other])` | same | Saturating subtract, masked |
+
+`fill` / `add` swatches: `black`/`white`/`gray`, 0…255, or RGB hex like `CAM_LIGHT` (`F0F` magenta, `FFF` white). On gray, hex becomes luma.
+
+`apply_mask` is the old “ROI crop”. Do **not** `apply_mask` after selecting black if you still need `find_contours` — AND leaves near-black pixels and thresholds eat them. Use `fill(mask, FFF)` (keep fuzzy) or `use_mask()` / `bitwise_not`+`use_mask()` (binary blobs).
 
 ##### Contours
 
 | Filter | Args | Description |
 | --- | --- | --- |
-| `find_contours([min_area[, max_area]])` | default 50 … 999999 | External contours by area → `detected_contours` |
-| `find_contours_by_r(min_r[, max_r])` | max_r default 1.2·min_r | Contours by equivalent-radius area band |
+| `find_contours([min_area[, max_area]])` | default 50 … 999999 | `RETR_LIST` by area → `detected_contours` (gray) |
+| `find_contours_ex([min_area[, max_area]])` | same | `RETR_EXTERNAL` (outer only) |
+| `find_contours_by_r(min_r[, max_r])` | max_r default 1.2·min_r | `RETR_LIST` by equivalent-radius area band |
+| `find_contours_ex_by_r(min_r[, max_r])` | same | `RETR_EXTERNAL` by radius band |
 
 ##### Circles
 
@@ -282,6 +319,7 @@ Names are as used in `STEPS` (without the `_filter_` prefix).
 | `dist_peaks(min_r, max_r[, min_dist[, threshold_rel[, invert]]])` | min_dist default min_r | Distance-transform local maxima → circle centers. Best for sprocket / regular holes |
 | `filter_circles_r(min_r[, max_r])` | — | Keep circles by radius |
 | `filter_circles_score(min_score)` | — | Keep by circularity `score` |
+| `merge_concentric([max_dist[, how]])` | default 8 px, `mean` | Merge circles whose centers are within `max_dist`. Averages (cx,cy); radius by `how`: `mean` / `min` / `max` / `score`. For Sobel/Canny holes (inner+outer edge) |
 | `sort_proximity([cx[, cy]])` | default `auto` = principal point | Sort circles **and** rects nearest-first |
 | `pick_nearest([cx, cy[, keep]]])` | keep default 1 | Keep N nearest (optional; HOME wants pipeline to already yield n=1) |
 
@@ -292,6 +330,7 @@ Names are as used in `STEPS` (without the `_filter_` prefix).
 | Filter | Args | Description |
 | --- | --- | --- |
 | `make_rects()` | — | Each contour → `minAreaRect` → `detected_rects` |
+| `merge_rects([max_dist[, how[, max_ang]]])` | default 8 px, `mean`, 15° | Merge nested rects of the same size (inner+outer edge). Run `filter_rects_width` / aspect first — pads, body and pocket share a center. Averages (cx,cy); `w`/`h` by `how`: `mean` / `min` / `max` |
 | `rectilinear_merged()` | — | All contour points → one `minAreaRect` |
 | `filter_rects_aspect(min[, max])` | default 1.4 … 2.1 | Keep rects by long/short side ratio |
 | `filter_rects_width(min_px[, max_px])` | default 0 … 9999 | Keep by longer side length (pixels) |
@@ -303,8 +342,12 @@ Recommended stacks:
   `find_contours_by_r` → `circular_symmetry` and/or `enclosing_circle` → optional `radial_symmetry` → tight `filter_circles_r`
 - **Tape sprockets (many circles):**
   `otsu` → `dist_peaks(min_r,max_r)` or `blob_circles(...)`
+  Edge path (Sobel/Canny): `circularity` → `filter_circles_r` → `merge_concentric` (inner+outer edge of each hole)
+- **Black tape (weak luma, FDM through sprockets):**
+  `mask_lab(0,40)` then `fill(mask, FFF)` (paint black so the blob has a non-black interior; fuzzy outside stays) **or** `bitwise_not()` + `use_mask()` (holes as white FG). Then `find_contours_by_r` → `enclosing_circle`. Hue `mask_hsv(70,110,…)` if the print-through is chromatic. Do not Canny the hole interior.
 - **Packages:**
   `find_contours` → `make_rects` → `filter_rects_*`
+  Edge path (Sobel/Canny): `make_rects` → `filter_rects_*` → `merge_rects` (size-gate pads vs body vs pocket, then collapse inner+outer edge)
 
 ##### Draw / debug / stash
 
@@ -346,10 +389,28 @@ Rectangular part on tray:
 STEPS="|blurgausian(3)|gray()|threshold(100,255)|erode(1)|find_contours(100,5000)|make_rects()|filter_rects_aspect(1.3,1.8)|filter_rects_width(35,65)|color()|draw_rects()"
 ```
 
-HSV tray mask then parts:
+HSV tray mask then parts (masks are stashed, then applied):
 
 ```text
-STEPS="|mask_hsv(75,96,50,255,150,255)|gray()|invert()|mask_centrect(900)|morph_close(7,2)|threshold(127,255)|find_contours(20,400000)|make_rects()|color()|draw_contours(1)|draw_rects()"
+STEPS="|mask_hsv(75,96,50,255,150,255,0,hsv)|mask_centrect(900)|bitwise_and(hsv,mask,roi)|apply_mask(roi)|gray()|morph_close(7,2)|threshold(127,255)|find_contours(20,400000)|make_rects()|color()|draw_contours(1)|draw_rects()"
+```
+
+Black tape sprockets (fill black so contours see a solid blob):
+
+```text
+STEPS="|mask_lab(0,40)|fill(mask,FFF)|gray()|find_contours_by_r(min_r,max_r)|enclosing_circle(circ)|color()|draw_circles()"
+```
+
+Black tape, holes as FG (binary mask, no AND on the frame):
+
+```text
+STEPS="|mask_lab(0,40)|bitwise_not()|use_mask()|find_contours_by_r(min_r,max_r)|enclosing_circle(circ)|color()|draw_circles()"
+```
+
+Combine Lab-black with a circular ROI, then one apply:
+
+```text
+STEPS="|mask_lab(0,40,0,255,0,255,0,tape)|mask_centcirc(200,roi)|bitwise_and(tape,roi,both)|fill(both,FFF)|gray()|find_contours_by_r(min_r,max_r)|enclosing_circle(circ)|color()|draw_circles()"
 ```
 
 ### PNP_VISION_LIST
@@ -410,7 +471,7 @@ was on the optical axis:
 - **Top** (`looking: down`): fiducial XY (updates `[pnp]` fiducial dict
   in RAM if `FIDUCIAL=` was given). `fx ≈ |Z_tool − z_plane| / mm_per_px`.
 - **Bottom** (`looking: up`): `ACCEPT Z=` **moves the nozzle to that Z**,
-  then the rosette. Solved camera XY (paste `camera_x` / `camera_y`).
+  then the rosette. Solved camera XY (paste `camera_xy`).
   A second ACCEPT at another nozzle height also fits `camera_z` and `fx`.
 
 ### PNP_VISION_HOME
@@ -421,13 +482,13 @@ PNP_VISION_HOME FIDUCIAL=primary CAM=topcam PIPELINE=fiducial
 
 1. Optional `SET_GCODE_OFFSET X=0 Y=0` (`RESET_OFFSET=1`)
 2. Move to fiducial nominal XY (toolhead Z unchanged)
-3. Detect → `pixels_to_mm_offset` → jog; loop until error ≤ `TOLERANCE`
+3. Detect → `pixels_to_mm_offset` → jog; loop until error ≤ `ACCURACY`
 4. `SET_GCODE_OFFSET` so G-code XY matches the fiducial coordinates
 
 | Parameter | Default | |
 | --- | --- | --- |
 | `FIDUCIAL` | primary | `primary` / `secondary` |
-| `TOLERANCE` | 0.05 | mm residual |
+| `ACCURACY` | 0.05 | mm residual |
 | `MAX_ITER` | 8 | |
 | `SPEED` | calib_speed | |
 | `SETTLE` | 0.2 | s |

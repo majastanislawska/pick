@@ -8,7 +8,7 @@
 import re,datetime
 import cv2,numpy,math
 import logging
-from .camera_v4l import parse_light
+from .camera_v4l import parse_light, parse_hex_color
 
 class detection_item:
     def __init__(self, c):
@@ -68,6 +68,32 @@ class detection_item:
         item.perimeter = float(numpy.pi * 2 * item.r)
         item.box = None
         item.rect = None
+        return item
+    @classmethod
+    def from_rect(cls, cx, cy, w, h, angle, c=None):
+        """Axis-normalized rect (long side = w), with box for drawing."""
+        item = object.__new__(cls)
+        item.type = 'rect'
+        item.cx = float(cx)
+        item.cy = float(cy)
+        item.w = float(w)
+        item.h = float(h)
+        item.angle = float(angle)
+        if item.w < item.h:
+            item.angle -= 90.
+            item.w, item.h = item.h, item.w
+        if item.h == 0:
+            item.h = 1e-6
+        item.ratio = item.w / item.h
+        item.area = item.w * item.h
+        item.r = float(numpy.sqrt(item.area / numpy.pi))
+        item.rect = ((item.cx, item.cy), (item.w, item.h), item.angle)
+        item.box = numpy.int64(cv2.boxPoints(item.rect))
+        item.c = c
+        item.symmetry = None
+        item.fill_ratio = None
+        item.c_score = None
+        item.perimeter = 0.
         return item
     def __repr__(self):
         s = f"{self.type} xy={self.cx,self.cy}"
@@ -271,46 +297,213 @@ class PnpVisionPipeline:
         self.detected_circles = []
         self.detected_rects = []
 
+    def _filter_adjust(self, gcmd, brightness, contrast=1.):
+        "brightnes:[-255..255], contrast [0..1..3]"
+        mid = numpy.full_like(self.img, 128)
+        self.img = cv2.addWeighted(self.img, contrast, mid, 1.0 - contrast, brightness)
+        if self.verbose: gcmd.respond_info(f"adjust({brightness, contrast})")
     def _filter_blurmedian(self, gcmd, size):
         self.img = cv2.medianBlur(self.img, int(size))
         if self.verbose: gcmd.respond_info(f"blurmedian({size})")
-    def _filter_blurgausian(self, gcmd, size):
-        self.img = cv2.GaussianBlur(self.img, (int(size), int(size)), 0)
+    def _filter_blurgausian(self, gcmd, size,sigmaX=0,sigmaY=None):
+        if sigmaY is None: sigmaY=sigmaX
+        self.img = cv2.GaussianBlur(self.img, (int(size), int(size)), sigmaX, sigmaY)
         if self.verbose: gcmd.respond_info(f"blurgausian({size})")
+    def _is_gray(self):
+        return self.img.ndim == 2 or (self.img.ndim == 3 and self.img.shape[2] == 1)
+    def _require_gray(self, gcmd):
+        if not self._is_gray():
+            raise gcmd.error("need a gray frame")
+    def _require_bgr(self, gcmd):
+        if self._is_gray():
+            raise gcmd.error("need a BGR frame")
     def _filter_color(self, gcmd):
-        self.img = cv2.cvtColor( self.img, cv2.COLOR_GRAY2BGR)
+        self._require_gray(gcmd)
+        self.img = cv2.cvtColor(self.img, cv2.COLOR_GRAY2BGR)
         if self.verbose: gcmd.respond_info(f"color()")
+    def _filter_bgr(self, gcmd):
+        self._filter_color(gcmd)
     def _filter_gray(self, gcmd):
-        self.img = cv2.cvtColor( self.img, cv2.COLOR_BGR2GRAY)
+        """gray() — BGR → luma. Errors if the frame is already gray."""
+        self._require_bgr(gcmd)
+        self.img = cv2.cvtColor(self.img, cv2.COLOR_BGR2GRAY)
         if self.verbose: gcmd.respond_info(f"gray()")
     def _filter_threshold(self, gcmd,thresh_val=128, max_val=255, method=cv2.THRESH_BINARY):
+        self._require_gray(gcmd)
         _, self.img = cv2.threshold(self.img, thresh_val, max_val, method)
         if self.verbose: gcmd.respond_info(f"threshold({thresh_val, max_val})")
     def _filter_otsu(self, gcmd,thresh_val=0, max_val=255, method=cv2.THRESH_BINARY):
+        self._require_gray(gcmd)
         _, self.img = cv2.threshold(self.img, thresh_val, max_val, method+cv2.THRESH_OTSU)
         if self.verbose: gcmd.respond_info(f"otsu({thresh_val, max_val})")
     def _filter_threshmean(self, gcmd, block_size, c, max_value=225, method=cv2.THRESH_BINARY):
+        self._require_gray(gcmd)
         self.img = cv2.adaptiveThreshold(self.img, max_value, cv2.ADAPTIVE_THRESH_MEAN_C, cv2.THRESH_BINARY, block_size, c)
         if self.verbose: gcmd.respond_info(f"threshmean({block_size, c, max_value})")
     def _filter_threshgaus(self, gcmd, block_size, c, max_value=225, method=cv2.THRESH_BINARY):
+        self._require_gray(gcmd)
         self.img = cv2.adaptiveThreshold(self.img, max_value, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, block_size, c)
         if self.verbose: gcmd.respond_info(f"threshgaus({block_size, c, max_value})")
     def _filter_bilateral(self, gcmd, block_size, sigCol, sigSiz, border=cv2.BORDER_DEFAULT):
         self.img = cv2.bilateralFilter(self.img,block_size,sigCol, sigSiz, border)
         if self.verbose: gcmd.respond_info(f"bilateral({block_size, sigCol, sigSiz, border})")
-
-    def _filter_mask_hsv(self, gcmd, h_min, h_max, s_min, s_max,  v_min, v_max, invert=0):
+    def _filter_laplacian(self,gcmd):
+        self.img = cv2.Laplacian(self.img, cv2.CV_64F)
+        if self.verbose: gcmd.respond_info(f"laplacian()")
+    def _filter_normalize(self, gcmd,alpha=0,beta=255):
+        self.img = cv2.normalize(self.img, None, alpha, beta, norm_type=cv2.NORM_MINMAX)
+        if self.verbose: gcmd.respond_info(f"normalize({alpha},{beta})")
+    def _filter_equalize_hist(self, gcmd):
+        if self._is_gray():
+            self.img = cv2.equalizeHist(self.img)
+        else:
+            chans = list(cv2.split(self.img))
+            for i, ch in enumerate(chans):
+                chans[i] = cv2.equalizeHist(ch)
+            self.img = cv2.merge(chans)
+        if self.verbose: gcmd.respond_info(f"equalize_hist()")
+    def _filter_clahe(self, gcmd, size=8,clip=5):
+        clahe = cv2.createCLAHE(tileGridSize=(size, size), clipLimit=clip)
+        if self._is_gray():
+            self.img = clahe.apply(self.img)
+        else:
+            l, a, b = cv2.split(cv2.cvtColor(self.img, cv2.COLOR_BGR2LAB))
+            self.img = cv2.cvtColor(cv2.merge((clahe.apply(l), a, b)), cv2.COLOR_LAB2BGR)
+        if self.verbose: gcmd.respond_info(f"clahe({size},{clip})")
+    # mask_* stash a 0/255 mask (name=mask). bitwise_* combine stashes.
+    # apply_mask() ANDs the result onto the frame; fill()/use_mask() also consume it.
+    def _stash_mask(self, mask, invert=0, name='mask'):
+        if isinstance(invert, str):
+            name, invert = invert, 0
+        if int(invert) == 1:
+            mask = cv2.bitwise_not(mask)
+        self.image_stash[name] = mask
+    def _mask_from_stash(self, name):
+        entry = self.image_stash.get(name)
+        if entry is None:
+            raise ValueError("stash '%s' not found — run mask_* first" % (name,))
+        return entry
+    _FILL = {'black': 0, 'white': 255, 'gray': 128}
+    _INV = {'inv', 'not', 'invert'}
+    def _swatch(self, tok):
+        """Named fill, scalar, or RGB hex (same parser as LIGHT=). BGR on 3ch."""
+        n = 1 if self._is_gray() else self.img.shape[2]
+        if isinstance(tok, (int, float)):
+            v = int(tok)
+            return v if n == 1 else (v, v, v)
+        key = str(tok)
+        if key in self._FILL:
+            v = self._FILL[key]
+            return v if n == 1 else (v, v, v)
+        rgb = parse_hex_color(key)
+        if rgb is not None:
+            r, g, b = [int(round(c * 255)) for c in rgb[:3]]
+            if n == 1:
+                return int(0.299 * r + 0.587 * g + 0.114 * b)
+            return (b, g, r)
+        raise ValueError(
+            "unknown swatch '%s' (black/white/gray, hex F0F/FFF, or 0..255)"
+            % (key,))
+    def _swatch_img(self, color):
+        out = numpy.empty_like(self.img)
+        out[:] = color
+        return out
+    def _match_channels(self, src):
+        if src.shape[:2] != self.img.shape[:2]:
+            raise ValueError("stash size %s != img %s"
+                             % (src.shape[:2], self.img.shape[:2]))
+        img_ch = 1 if self.img.ndim == 2 else self.img.shape[2]
+        src_ch = 1 if src.ndim == 2 else src.shape[2]
+        if img_ch == src_ch:
+            return src
+        if src_ch == 1 and img_ch == 3:
+            return cv2.cvtColor(src, cv2.COLOR_GRAY2BGR)
+        if src_ch == 3 and img_ch == 1:
+            return cv2.cvtColor(src, cv2.COLOR_BGR2GRAY)
+        return src
+    def _other_src(self, other):
+        if other is None:
+            return self.img
+        if isinstance(other, (int, float)):
+            return numpy.full_like(self.img, int(other))
+        key = str(other)
+        if key in self._FILL or parse_hex_color(key) is not None:
+            return self._swatch_img(self._swatch(key))
+        if key in self._INV:
+            return cv2.bitwise_not(self.img)
+        if key in self.image_stash:
+            return self._match_channels(self.image_stash[key])
+        raise ValueError(f"unknown other {key} (black/white/gray/inv/hex/0..255 or stash name)")
+    def _arith(self, gcmd, op, name, other, label):
+        mask = self._mask_from_stash(name)
+        src2 = self._other_src(other)
+        self.img = op(self.img, src2, mask=mask)
+        if self.verbose:
+            gcmd.respond_info("%s(%s,%s)" % (label, name, other))
+    def _filter_mask_hsv(self, gcmd, h_min, h_max, s_min, s_max,  v_min, v_max, invert=0,name='mask'):
         """
-        mask_hsv(h_min, h_max, s_min, s_max,  v_min, v_max)
+        mask_hsv(h_min, h_max, s_min, s_max,  v_min, v_max [, invert])
         h=[0..180], s=[0..255],v=[0..255]
+        Stashes binary mask as 'mask'; does not change self.img.
+        Follow with bitwise_*(a,b), apply_mask(), fill(), or use_mask().
         """
+        self._require_bgr(gcmd)
         hsv_frame = cv2.cvtColor(self.img, cv2.COLOR_BGR2HSV)
         lower_bound = numpy.array([int(h_min), int(s_min), int(v_min)], dtype=numpy.uint8)
         upper_bound = numpy.array([int(h_max), int(s_max), int(v_max)], dtype=numpy.uint8)
-        mask = cv2.inRange(hsv_frame, lower_bound, upper_bound)
-        if int(invert) == 1: mask = cv2.bitwise_not(mask)
-        self.img = cv2.bitwise_and(self.img, self.img, mask=mask)
-        if self.verbose: gcmd.respond_info(f"hsv({h_min, h_max, s_min, s_max,  v_min, v_max, invert})")
+        self._stash_mask(cv2.inRange(hsv_frame, lower_bound, upper_bound), invert, name)
+        if self.verbose: gcmd.respond_info(f"hsv({h_min, h_max, s_min, s_max,  v_min, v_max, invert, name})")
+    def _filter_mask_lab(self, gcmd, l_min, l_max, a_min=0, a_max=255, b_min=0, b_max=255, invert=0,name='mask'):
+        """
+        mask_lab(l_min, l_max [, a_min, a_max, b_min, b_max, invert])
+        OpenCV Lab uint8: L=[0..255], a/b=[0..255] (128 = neutral).
+        a/b default to full range, so mask_lab(0,40) is black, mask_lab(50,140) is gray.
+        Stashes binary mask as 'mask'; does not change self.img.
+        invert=1 needs a/b placeholders; or use_mask()|invert().
+        """
+        self._require_bgr(gcmd)
+        lab = cv2.cvtColor(self.img, cv2.COLOR_BGR2LAB)
+        lower_bound = numpy.array([int(l_min), int(a_min), int(b_min)], dtype=numpy.uint8)
+        upper_bound = numpy.array([int(l_max), int(a_max), int(b_max)], dtype=numpy.uint8)
+        self._stash_mask(cv2.inRange(lab, lower_bound, upper_bound), invert, name)
+        if self.verbose: gcmd.respond_info(
+            f"lab({l_min, l_max, a_min, a_max, b_min, b_max, invert, name})")
+
+    def _filter_sharpen_2D9(self,gcmd):
+        kernel = numpy.array([[-1.,-1.,-1.], [-1.,9.,-1.], [-1.,-1.,-1.]])
+        self.img = cv2.filter2D(self.img, -1, kernel)
+        if self.verbose: gcmd.respond_info(f"sharpen2D9() ({kernel.tolist()})")
+    def _filter_sharpen_2D5(self,gcmd):
+        kernel = numpy.array([[0.,-1.,0.], [-1.,5.,-1.], [0.,-1.,0.]])
+        self.img = cv2.filter2D(self.img, -1, kernel)
+        if self.verbose: gcmd.respond_info(f"sharpen2D5() ({kernel.tolist()})")
+    def _filter_sharpen_mask(self,gcmd, size=0,sigma=1.0, strength=1.5):
+        blur = cv2.GaussianBlur(self.img, (int(size), int(size)), sigma)
+        self.img = cv2.addWeighted(self.img, 1.0 + strength, blur, -strength, 0)
+        if self.verbose: gcmd.respond_info(f"unsharp_mask({size}, {sigma}, {strength})")
+    def _filter_sharpen_gaus(self,gcmd, size=0, sigma=1.0, strength=1.5):
+        blur = cv2.GaussianBlur(self.img, (int(size), int(size)), sigma)
+        self.img = cv2.addWeighted(self.img, 1.0 + strength, blur, -strength, 0)
+        if self.verbose: gcmd.respond_info(f"sharpen_mask({size}, {sigma}, {strength})")
+    def _filter_sharpen_highpass(self,gcmd, size=0, sigma=1.0, strength=1.5):
+        blur = cv2.GaussianBlur(self.img, (int(size), int(size)), sigma)
+        high_pass = cv2.subtract(self.img, blur)
+        self.img = cv2.addWeighted(self.img, 1.0 + strength, high_pass, -strength, 0)
+        if self.verbose: gcmd.respond_info(f"sharpen_highpass({size}, {sigma}, {strength})")
+    def _filter_sharpen_lapl_add(self,gcmd, sigma=1.0, strength=1.5):
+        laplacian = cv2.Laplacian(self.img, cv2.CV_64F)
+        lap = cv2.convertScaleAbs(laplacian)
+        self.img = cv2.addWeighted(self.img, 1.0 + strength, lap, -strength, 0)
+        if self.verbose: gcmd.respond_info(f"sharpen_lapl_add()")
+    def _filter_sharpen_lapl_sub(self,gcmd):
+        laplacian = cv2.Laplacian(self.img, cv2.CV_64F)
+        lap = cv2.convertScaleAbs(laplacian)
+        self.img =cv2.subtract(self.img, lap)
+        if self.verbose: gcmd.respond_info(f"sharpen_lapl_sub()")
+    def _filter_sharpen_bilateral(self, gcmd, block_size, sigCol, sigSiz, border=cv2.BORDER_DEFAULT):
+        bilateral_filter = cv2.bilateralFilter(self.img,block_size,sigCol, sigSiz, border)
+        self.img = cv2.subtract(self.img, bilateral_filter)
+        if self.verbose: gcmd.respond_info(f"sharpen_bilateral({block_size, sigCol, sigSiz, border})")
 
     def _filter_morph_close(self, gcmd, kernel_size=5, iterations=1):
         size = int(kernel_size)
@@ -341,24 +534,66 @@ class PnpVisionPipeline:
     def _filter_invert(self,gcmd):
         self.img = cv2.bitwise_not(self.img)
         if self.verbose: gcmd.respond_info(f"invert()")
+    def _mask_op(self, gcmd, op, a, b, dst, label):
+        ma = self._mask_from_stash(a)
+        mb = self._mask_from_stash(b)
+        if ma.shape != mb.shape:
+            raise gcmd.error("%s: mask %s %s != %s %s"% (label, a, ma.shape, b, mb.shape))
+        if dst is None:
+            dst = a
+        self.image_stash[dst] = op(ma, mb)
+        if self.verbose:
+            gcmd.respond_info("%s(%s,%s -> %s)" % (label, a, b, dst))
+    def _filter_bitwise_and(self, gcmd, a, b, dst=None):
+        """AND two stashed masks. bitwise_and(tape, roi [, dst]). dst defaults to a."""
+        self._mask_op(gcmd, cv2.bitwise_and, a, b, dst, 'bitwise_and')
+    def _filter_bitwise_or(self, gcmd, a, b, dst=None):
+        self._mask_op(gcmd, cv2.bitwise_or, a, b, dst, 'bitwise_or')
+    def _filter_bitwise_xor(self, gcmd, a, b, dst=None):
+        self._mask_op(gcmd, cv2.bitwise_xor, a, b, dst, 'bitwise_xor')
+    def _filter_bitwise_not(self, gcmd, a='mask', dst=None):
+        ma = self._mask_from_stash(a)
+        if dst is None:
+            dst = a
+        self.image_stash[dst] = cv2.bitwise_not(ma)
+        if self.verbose:
+            gcmd.respond_info("bitwise_not(%s -> %s)" % (a, dst))
+    def _filter_apply_mask(self, gcmd, name='mask'):
+        """AND the working image with a stashed mask (zeros outside)."""
+        mask = self._mask_from_stash(name)
+        self.img = cv2.bitwise_and(self.img, self.img, mask=mask)
+        if self.verbose:
+            gcmd.respond_info("apply_mask(%s)" % (name,))
+    def _filter_add(self, gcmd, name='mask', other=None):
+        self._arith(gcmd, cv2.add, name, other, 'add')
+    def _filter_subtract(self, gcmd, name='mask', other=None):
+        self._arith(gcmd, cv2.subtract, name, other, 'subtract')
+    def _filter_use_mask(self, gcmd, name='mask'):
+        """Replace the working image with the stashed 0/255 mask (gray)."""
+        self.img = self._mask_from_stash(name).copy()
+        if self.verbose: gcmd.respond_info(f"use_mask({name})")
+    def _filter_fill(self, gcmd, name='mask', other='white'):
+        """Paint other onto img where mask!=0. In-place — fuzzy outside stays.
+        other: black/white/gray, scalar, or RGB hex (F0F magenta, FFF white)."""
+        mask = self._mask_from_stash(name)
+        self.img[mask != 0] = self._swatch(other)
+        if self.verbose:
+            gcmd.respond_info("fill(%s,%s)" % (name, other))
     def _filter_mask_circ(self, gcmd, cx, cy, radius, invert=0):
         mask = numpy.zeros(self.img.shape[:2], dtype=numpy.uint8)
         cv2.circle(mask, (int(cx), int(cy)), int(radius), 255, -1)
-        if int(invert) == 1: mask = cv2.bitwise_not(mask)
-        self.img = cv2.bitwise_and(self.img, self.img, mask=mask)
+        self._stash_mask(mask, invert)
         if self.verbose: gcmd.respond_info(f"mask_circ({cx}, {cy}, {radius}, {invert})")
     def _filter_mask_rect(self, gcmd, x, y, w, h, invert=0):
         mask = numpy.zeros(self.img.shape[:2], dtype=numpy.uint8)
         w2=w/2;h2=h/2
         cv2.rectangle(mask, (int(x-w2), int(y-h2)), (int(x+w2), int(y+h2)), 255, -1)
-        if int(invert) == 1: mask = cv2.bitwise_not(mask)
-        self.img = cv2.bitwise_and(self.img, self.img, mask=mask)
+        self._stash_mask(mask, invert)
         if self.verbose: gcmd.respond_info(f"mask_rect({x}, {y}, {w}, {h}, {invert})")
     def _filter_mask_centcirc(self, gcmd, radius, invert=0):
         mask = numpy.zeros(self.img.shape[:2], dtype=numpy.uint8)
         cv2.circle(mask, (int(self.cam.cx), int(self.cam.cy)), int(radius), 255, -1)
-        if int(invert) == 1: mask = cv2.bitwise_not(mask)
-        self.img = cv2.bitwise_and(self.img, self.img, mask=mask)
+        self._stash_mask(mask, invert)
         if self.verbose: gcmd.respond_info(f"mask_centcirc({radius}, {invert})")
     def _filter_mask_centrect(self, gcmd, w, h=None, invert=0):
         if h is None: h=w
@@ -366,10 +601,10 @@ class PnpVisionPipeline:
         w2=w/2; h2=h/2
         mask = numpy.zeros(self.img.shape[:2], dtype=numpy.uint8)
         cv2.rectangle(mask, (int(cx-w2), int(cy-h2)), (int(cx+w2), int(cy+h2)), 255, -1)
-        if int(invert) == 1: mask = cv2.bitwise_not(mask)
-        self.img = cv2.bitwise_and(self.img, self.img, mask=mask)
+        self._stash_mask(mask, invert)
         if self.verbose: gcmd.respond_info(f"mask_centrect({w}, {h}, {invert})")
     def _filter_canny(self, gcmd, threshold1=50, threshold2=150,apertureSize=3,L2gradient=0):
+        self._require_gray(gcmd)
         self.img = cv2.Canny(self.img, float(threshold1), float(threshold2), apertureSize=apertureSize, L2gradient=L2gradient)
         if self.verbose: gcmd.respond_info(f"canny({threshold1}, {threshold2})")
     def _filter_sobelxy(self, gcmd,ksize):
@@ -378,8 +613,13 @@ class PnpVisionPipeline:
         sobel_y = cv2.Sobel(self.img, cv2.CV_64F, 0, 1, ksize=ksize)  # Vertical edges
         grad = cv2.magnitude(sobel_x, sobel_y)
         self.img = cv2.convertScaleAbs(grad)
+    def _filter_laplacian(self,gcmd):
+        laplacian = cv2.Laplacian(self.img, cv2.CV_64F)
+        self.img = cv2.convertScaleAbs(laplacian)
+        if self.verbose: gcmd.respond_info(f"laplacian()")
 
     def _filter_find_contours(self, gcmd,min_area=50,max_area=999999):
+        self._require_gray(gcmd)
         contours, _ = cv2.findContours(self.img, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
         self.detected_contours = []
         for c in contours:
@@ -389,6 +629,7 @@ class PnpVisionPipeline:
         if self.verbose: gcmd.respond_info(f"find_contours({min_area}, {max_area}) all={len(contours)} -> fit={len(self.detected_contours)}")
     def _filter_find_contours_ex(self, gcmd,min_area=50,max_area=999999):
         """find_contours_ex() uses cv2.RETR_EXTERNAL to ignore nested contours."""
+        self._require_gray(gcmd)
         contours, _ = cv2.findContours(self.img, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         self.detected_contours = []
         for c in contours:
@@ -397,6 +638,7 @@ class PnpVisionPipeline:
                 self.detected_contours.append(item)
         if self.verbose: gcmd.respond_info(f"find_contours_ex({min_area}, {max_area}) all={len(contours)} -> fit={len(self.detected_contours)}")
     def _filter_find_contours_by_r(self, gcmd,min_r=50.,max_r=None):
+        self._require_gray(gcmd)
         if max_r is None: max_r=1.2*min_r
         min_area=numpy.pi*min_r*min_r
         max_area=numpy.pi*max_r*max_r
@@ -409,6 +651,7 @@ class PnpVisionPipeline:
         if self.verbose: gcmd.respond_info(f"find_contours_by_r({min_r}, {max_r}) all={len(contours)} -> fit={len(self.detected_contours)}")
     def _filter_find_contours_ex_by_r(self, gcmd,min_r=50.,max_r=None):
         """find_contours_ex() uses cv2.RETR_EXTERNAL to ignore nested contours."""
+        self._require_gray(gcmd)
         if max_r is None: max_r=1.2*min_r
         min_area=numpy.pi*min_r*min_r
         max_area=numpy.pi*max_r*max_r
@@ -458,6 +701,7 @@ class PnpVisionPipeline:
         Usage: ...|gray()|otsu()|blob_circles(20,80)|...
                ...|blob_circles(15,50,0.8,0.85,0.5,0)|  # dark holes
         """
+        self._require_gray(gcmd)
         min_r, max_r = float(min_r), float(max_r)
         params = cv2.SimpleBlobDetector_Params()
         params.filterByArea = True
@@ -500,6 +744,7 @@ class PnpVisionPipeline:
         Usage: ...|gray()|otsu()|dist_peaks(8,25)|...
                ...|dist_peaks(10,40,20,0.4)|
         """
+        self._require_gray(gcmd)
         min_r, max_r = float(min_r), float(max_r)
         # binary FG=255
         # if self.img.max() <= 1:
@@ -581,6 +826,178 @@ class PnpVisionPipeline:
         if self.verbose: gcmd.respond_info(
             f"filter_circles_score({min_score}): "
             f"in={before} -> out={len(self.detected_circles)}")
+    def _cluster_items(self, items, pair_ok):
+        """Union-find groups; pair_ok(a, b) is True when a and b should merge."""
+        n = len(items)
+        if n <= 1:
+            return [items] if n else []
+        parent = list(range(n))
+        def find(i):
+            while parent[i] != i:
+                parent[i] = parent[parent[i]]
+                i = parent[i]
+            return i
+        for i in range(n):
+            for j in range(i + 1, n):
+                if pair_ok(items[i], items[j]):
+                    ri, rj = find(i), find(j)
+                    if ri != rj:
+                        parent[rj] = ri
+        groups = {}
+        for i in range(n):
+            groups.setdefault(find(i), []).append(items[i])
+        return list(groups.values())
+    def _filter_merge_concentric(self, gcmd, max_dist=8., how='mean'):
+        """
+        Collapse concentric circle detections (inner+outer edge of a hole/ring)
+        into one. Centers always averaged (weighted by c_score); radius by how:
+        mean (default), min, max, score (keep r of the best-scoring member).
+        Two circles merge when center distance <= max_dist (pixels).
+        Singletons pass through unchanged.
+        Usage: ...|circularity(0.8)|filter_circles_r(min_r,max_r)|merge_concentric(8)|...
+               ...|fit_ellipses(0.8)|merge_concentric(5,max)|...
+        """
+        max_dist = float(max_dist)
+        how = str(how).lower()
+        src = [i for i in self.detected_circles
+               if i.cx is not None and i.cy is not None and i.r is not None]
+        n = len(src)
+        if n <= 1:
+            self.detected_circles = src
+            if self.verbose:
+                gcmd.respond_info(f"merge_concentric({max_dist}, {how}): n={n}")
+            return
+        max_d2 = max_dist * max_dist
+        def pair_ok(a, b):
+            dx = a.cx - b.cx
+            dy = a.cy - b.cy
+            return dx * dx + dy * dy <= max_d2
+        merged = []
+        n_collapsed = 0
+        for items in self._cluster_items(src, pair_ok):
+            if len(items) == 1:
+                merged.append(items[0])
+                continue
+            n_collapsed += len(items)
+            merged.append(self._average_circles(items, how))
+        self.detected_circles = merged
+        if self.verbose:
+            gcmd.respond_info(
+                f"merge_concentric({max_dist}, {how}): "
+                f"in={n} groups={len(merged)} collapsed={n_collapsed}")
+    def _average_circles(self, items, how):
+        """Weighted mean of a concentric group → one detection_item."""
+        weights = []
+        for it in items:
+            w = float(it.c_score) if it.c_score is not None and it.c_score > 0 else 1.0
+            weights.append(w)
+        sw = sum(weights)
+        cx = sum(it.cx * w for it, w in zip(items, weights)) / sw
+        cy = sum(it.cy * w for it, w in zip(items, weights)) / sw
+        if how == 'min':
+            r = min(it.r for it in items)
+            seed = min(items, key=lambda it: it.r)
+        elif how in ('max', 'outer'):
+            r = max(it.r for it in items)
+            seed = max(items, key=lambda it: it.r)
+        elif how in ('score', 'best'):
+            seed = max(items, key=lambda it: it.c_score or 0.)
+            r = seed.r
+        else:
+            r = sum(it.r * w for it, w in zip(items, weights)) / sw
+            seed = max(items, key=lambda it: it.c_score or 0.)
+        score = sum((it.c_score or 0.) * w for it, w in zip(items, weights)) / sw
+        fills = [it.fill_ratio for it in items if it.fill_ratio is not None]
+        fill = (sum(fills) / len(fills)) if fills else None
+        syms = [it.symmetry for it in items if it.symmetry is not None]
+        sym = (sum(syms) / len(syms)) if syms else None
+        out = detection_item.from_circle(
+            cx, cy, r, score=score, symmetry=sym, fill_ratio=fill)
+        out.c = seed.c
+        if seed.c is not None:
+            out.perimeter = seed.perimeter
+        return out
+    @staticmethod
+    def _angle_diff_deg(a, b):
+        """Smallest difference of long-side angles, period 180°."""
+        diff = abs(float(a) - float(b)) % 180.
+        if diff > 90.:
+            diff = 180. - diff
+        return diff
+    def _filter_merge_rects(self, gcmd, max_dist=8., how='mean', max_ang=15.):
+        """
+        Collapse nested/concentric rects (inner+outer edge of one feature) into one.
+        Pads, body and pocket share a center — run filter_rects_width / aspect
+        first so only same-size inner+outer edges remain to merge.
+        Merge when center distance <= max_dist and long-side angle differs by
+        <= max_ang (deg, 180° period). Centers averaged; w/h by how:
+        mean (default), min, max, score (keep geometry of largest-area member).
+        Singletons pass through unchanged.
+        Usage: ...|make_rects()|filter_rects_width(min_w_px,max_w_px)|merge_rects(8)|...
+               ...|filter_rects_rot(rot,rot_tol)|merge_rects(8,max,20)|...
+        """
+        max_dist = float(max_dist)
+        how = str(how).lower()
+        max_ang = float(max_ang)
+        src = [i for i in self.detected_rects
+               if i.cx is not None and i.cy is not None
+               and i.w is not None and i.h is not None]
+        n = len(src)
+        if n <= 1:
+            self.detected_rects = src
+            if self.verbose:
+                gcmd.respond_info(
+                    f"merge_rects({max_dist}, {how}, {max_ang}): n={n}")
+            return
+        max_d2 = max_dist * max_dist
+        def pair_ok(a, b):
+            dx = a.cx - b.cx
+            dy = a.cy - b.cy
+            if dx * dx + dy * dy > max_d2:
+                return False
+            return self._angle_diff_deg(a.angle, b.angle) <= max_ang
+        merged = []
+        n_collapsed = 0
+        for items in self._cluster_items(src, pair_ok):
+            if len(items) == 1:
+                merged.append(items[0])
+                continue
+            n_collapsed += len(items)
+            merged.append(self._average_rects(items, how))
+        self.detected_rects = merged
+        if self.verbose:
+            gcmd.respond_info(
+                f"merge_rects({max_dist}, {how}, {max_ang}): "
+                f"in={n} groups={len(merged)} collapsed={n_collapsed}")
+    def _average_rects(self, items, how):
+        """Mean of a nested-rect group → one detection_item."""
+        n = float(len(items))
+        cx = sum(it.cx for it in items) / n
+        cy = sum(it.cy for it in items) / n
+        if how == 'min':
+            seed = min(items, key=lambda it: it.area)
+            w, h, angle = seed.w, seed.h, seed.angle
+        elif how in ('max', 'outer'):
+            seed = max(items, key=lambda it: it.area)
+            w, h, angle = seed.w, seed.h, seed.angle
+        elif how in ('score', 'best'):
+            seed = max(items, key=lambda it: it.area)
+            w, h, angle = seed.w, seed.h, seed.angle
+        else:
+            seed = max(items, key=lambda it: it.area)
+            w = sum(it.w for it in items) / n
+            h = sum(it.h for it in items) / n
+            # circular mean, 180° period (long-side orientation)
+            s = c = 0.
+            for it in items:
+                rad = math.radians(2. * it.angle)
+                s += math.sin(rad)
+                c += math.cos(rad)
+            angle = 0.5 * math.degrees(math.atan2(s, c))
+        out = detection_item.from_rect(cx, cy, w, h, angle, c=seed.c)
+        if seed.c is not None:
+            out.perimeter = seed.perimeter
+        return out
     def _filter_sort_proximity(self, gcmd, cx, cy):
         """
         Sort detected_circles and detected_rects nearest-first to (cx,cy).
@@ -632,7 +1049,6 @@ class PnpVisionPipeline:
         for item in src:
             if item.cx is None or item.cy is None:
                 continue
-            # Określamy promień wyszukiwania dla ROI
             r_search = item.r if item.r and item.r > 0 else 15
             pad = int(search_padding)
             x1 = max(0, int(item.cx - r_search - pad))
@@ -804,11 +1220,13 @@ class PnpVisionPipeline:
         gcmd.respond_info(f"Snapshot saved to {filename}.")
 
     def _filter_draw_circles(self, gcmd):
+        self._require_bgr(gcmd)
         for item in self.detected_circles:
             cv2.circle(self.img, (int(item.cx), int(item.cy)), int(item.r), (0, 255, 0), 2)
             cv2.circle(self.img, (int(item.cx), int(item.cy)), 2, (0, 0, 255), 3)
         if self.verbose: gcmd.respond_info(f"draw_circles: {len(self.detected_circles)} items.")
     def _filter_draw_rects(self, gcmd):
+        self._require_bgr(gcmd)
         for item in self.detected_rects:
             cv2.drawContours(self.img, [item.box], 0, (255, 0, 255), 2)
             rad = math.radians(item.angle)
@@ -821,6 +1239,7 @@ class PnpVisionPipeline:
             cv2.drawMarker(self.img, (int(item.cx), int(item.cy)), (0, 0, 255), cv2.MARKER_CROSS, 15, 1)
         if self.verbose: gcmd.respond_info(f"draw_rects: {len(self.detected_rects)} items.")
     def _filter_draw_contours(self, gcmd, thickness=1):
+        self._require_bgr(gcmd)
         for item in self.detected_contours:
             cv2.drawMarker(self.img, (int(item.cx), int(item.cy)), (255, 0, 0), cv2.MARKER_CROSS, 10, 1)
             cv2.drawContours(self.img, [item.c], -1, (0, 255, 0), int(thickness))
