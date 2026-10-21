@@ -1683,14 +1683,14 @@ The following commands are available when the
 [ch224q_pd config section](Config_Reference.md#ch224q_pd) is enabled.
 
 #### PD_SET
-`PD_SET [MCU=<name>] VOLTAGE=<value> [MODE=[FIXED|PPS|AVS]]` Sets the PD voltage for the specified MCU (config section name), can be ommited if there's just one
+`PD_SET [MCU=<name>] VOLTAGE=<value> [MODE=[FIXED|PPS|AVS]]` Sets the PD voltage for the specified MCU (config section name), can be omitted if there's just one
 `VOLTAGE`: Voltage in volts (e.g., 5, 9, 12, 15, 20, 28 for `FIXED`; 3.3-21.0 for PPS/AVS).
 `MODE`: `FIXED` (default), `PPS`, or `AVS`. Errors if VOLTAGE or MODE is invalid or AVS unsupported.
 
 #### PD_GET
 `PD_GET [MCU=<name>]` Returns PD status as a single line of space separated key:value format, voltage current protocols epr_support avs_support power_good
-power_good is hypotetised meaqning of bit7 of status register which is 'reserved' according to datasheet.
-when power supply is uncapable of power delivery, voltage will show 'prefered' value as configuted by resistor on cfg1 pin, protocols will show none, power_good 'no' and current bogus value
+power_good is hypothesized meaning of bit7 of status register which is 'reserved' according to datasheet.
+when power supply is incapable of power delivery, voltage will show 'preferred' value as configured by resistor on cfg1 pin, protocols will show none, power_good 'no' and current bogus value
 in case of using PD_SET with voltage not supported by charger, voltage will show last requested voltage, protocols will list supported protocols, power_good 'no' and current bogus value.
 
 #### PD_CAPS
@@ -1704,14 +1704,14 @@ See [PnP Vision](PnP_Vision.md) for setup and calibration workflow.
 Commands are muxed on `CAM=<name>`.
 
 #### CAM_GET
-`CAM_GET CAM=<name>` Dumps available controls (brightnes focus etc) for given camera.
+`CAM_GET CAM=<name>` Dumps available controls (brightness focus etc) for given camera.
 Those can be pasted into config file.
 
 #### CAM_SET
-`CAM_SET CAM=<name> [param=value] [param2=value2]` Sets value of camera controls. you can pass as many parameters as yoou need. Check `CAM_GET` for names and allowed values.
-Please note that some parameters depend on eachother and order of parameters or combinnation of values sometimes matter. (ie, you need to switch auto_exposure to manual mode before setting exposure_time, same with (auto)_focus)
+`CAM_SET CAM=<name> [param=value] [param2=value2]` Sets value of camera controls. you can pass as many parameters as you need. Check `CAM_GET` for names and allowed values.
+Please note that some parameters depend on each other and order of parameters or combination of values sometimes matter. (ie, you need to switch auto_exposure to manual mode before setting exposure_time, same with (auto)_focus)
 
-This command can be also used in 'startup gcode' instead of having thoose vales in configfile.
+This command can be also used in 'startup gcode' instead of having those vales in configfile.
 
 #### CAM_SNAP
 `CAM_SNAP CAM=<name> [TAG=<string>]`: Capture one processed frame and
@@ -1722,7 +1722,7 @@ The following commands are specific for `[camera_v4l <name>]` config section.
 
 #### CAM_HUD
 `CAM_HUD CAM=<name> [OVERLAY=<0|1>] TIMEOUT=<sec> [HUD=<0|1>] [FPS=<0|1>]`: Toggle stream overlay, crosshair HUD, and display of FPS.
-`TIMEOUT` is time after which overlay dissapears.
+`TIMEOUT` is time after which overlay disappears.
 
 #### CAM_LIGHT
 `CAM_LIGHT CAM=<name> [LIGHT=<0..1 and/or hex RGB>]`: Set this camera’s
@@ -1743,7 +1743,7 @@ See opencv `getOptimalNewCameraMatrix` for explanation of those params.
 
 `M`, `D`, `R` and `V` are parsed  by `ast.literal_eval` than subject to conversion to `numpy.array`. needs to be proper python literal but if they contain spaces have to be enclosed by quotes.
 
-This command can be also used in 'startup gcode' instead of having thoose vales in configfile.
+This command can be also used in 'startup gcode' instead of having those vales in configfile.
 
 ### [pnp]
 
@@ -1760,10 +1760,21 @@ None disables `move_transform` - all moves are handed to default klipper's `gcod
 
 #### PNP_TIP
 `PNP_TIP [LOAD=<name>] [UNLOAD=1] [TOOL=<name>]`
-'Loads' tool tip <name> on tool, on current tool if `TOOL=` is ommited.
-'unloads' if `UNLOAD=1` is set, or prints current tip if on paramms are passed.
+'Loads' tool tip <name> on tool, on current tool if `TOOL=` is omitted.
+'unloads' if `UNLOAD=1` is set, or prints current tip if on params are passed.
 
-This commmand is just a stub for now, in future it will perform toolchanigng sequences.
+This command is just a stub for now, in future it will perform toolchanging sequences.
+
+#### PNP_GOTO
+
+Move to known position FIDUCIAL/CAMERA/DROPBOX/DISCARD/BOARD/FEEDER or to SAVED= one, or define one to go later SAVE=. Move is using `safe_move` (retracts `Z` to 0)
+
+- `PNP_GOTO SAVE=<name> [X=<val>] [Y=<val>] [Z=<val>] [R=<val>]` - define 'saved' position, uses current position when `XYZ` are omitted
+- `PNP_GOTO SAVED=<name>` move to saved position.
+- `PNP_GOTO FIDUCIAL=[primary|secondary]` move to homing/calibration fiducials.
+- `PNP_GOTO CAM=<name>` move (current tool) over bottom camera.
+- `PNP_GOTO DISCARD=<whatever>` move to `discard_location` as defined in `[pnp]` config section. Due to how klipper parser works you have to give some value
+- `PNP_GOTO BOARD=<whatever>` move to `discardefault_board_locationd_location` as defined in `[pnp]` config section. That's a stub for now. will have more options when boards are introduced.
 
 ### [pnp_vision]
 

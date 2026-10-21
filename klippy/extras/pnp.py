@@ -33,6 +33,7 @@ class PnPManager:
         self.printer = config.get_printer()
         self.reactor = self.printer.get_reactor()
         self.name='pnp'
+        self.vision=None #PnPVision will injects itself here
         self.gcode = self.printer.load_object(config, 'gcode')
         self.gcode_move = self.printer.load_object(config, 'gcode_move')
         self.fiducial_primary = config.getasteval('fiducial_primary', {})
@@ -44,6 +45,7 @@ class PnPManager:
             raise config.error("pnp: r_gcode_letter cannot be %s"
                                % (self.r_gcode_letter,))
 
+        self.saved = config.getasteval('saved_positions', {})
         self.tools = {}
         self.active_tool = None
         self.toolhead = None
@@ -67,6 +69,8 @@ class PnPManager:
                                     desc=self.cmd_PNP_TOOL_help)
         self.gcode.register_command('PNP_TIP', self.cmd_PNP_TIP,
                                     desc=self.cmd_PNP_TIP_help)
+        self.gcode.register_command('PNP_GOTO', self.cmd_PNP_GOTO,
+                                    desc=self.cmd_PNP_GOTO_help)
 
         self.printer.register_event_handler("klippy:connect",
                                             self._handle_connect)
@@ -74,6 +78,7 @@ class PnPManager:
 
     def _handle_connect(self):
         self.toolhead = self.printer.lookup_object('toolhead')
+        self.vision=self.printer.lookup_object('pnp_vision')
         self._setup_z_pool()
         for tool in self.tools.values():
             tool.resolve_tool_axes(self.z_pool)
@@ -318,6 +323,16 @@ class PnPManager:
         raise self.printer.command_error(
             f"Unknown FIDUCIAL='{name}'. Use primary or secondary.")
 
+    def pos_from_dict(self, d):
+        pos=self.get_position()
+        for idx, axis in enumerate('xyz'):
+            if axis in d:
+                pos[idx] = float(d[axis])
+        r = d.get('r', d.get('rot'))
+        if r is not None:
+            pos[self.r_index()] = float(r)
+        return pos
+
     def reset_last_position(self):
         return self.gcode_move.reset_last_position()
 
@@ -402,6 +417,62 @@ class PnPManager:
         tool.tip = tool.tooltips[tip]
         gcmd.respond_info("loaded %s on %s" % (tool.tip.name, tool.short_name))
 
+    def _goto(self, loc, speed=None):
+        speed = self.gcode_move.speed if speed is None else speed
+        pos = self.pos_from_dict(loc)
+        return self.safe_move(pos, speed)
+
+    def _save_pos(self, gcmd):
+        name = gcmd.get('SAVE')
+        if not name:
+            raise gcmd.error("SAVE= requires a name")
+        pos = self.get_position()
+        loc = {
+            'x': gcmd.get_float('X', pos[0]),
+            'y': gcmd.get_float('Y', pos[1]),
+            'z': gcmd.get_float('Z', pos[2]),
+            'rot': gcmd.get_float('R', pos[self.r_index()])
+        }
+        self.saved[name] = loc
+        gcmd.respond_info(f"saved '{name}' = {loc}")
+
+    cmd_PNP_GOTO_help = (
+        "Move to known position FIDUCIAL/CAMERA/DROPBOX/DISCARD/BOARD/FEEDER"
+        "or to SAVED= one, or define one to go later SAVE=")
+    def cmd_PNP_GOTO(self, gcmd):
+        gparams = list(gcmd.get_command_parameters())
+        if len(gparams) < 1:
+            raise gcmd.error("PNP_GOTO requires a target parameter")
+        match gparams[0].upper():
+            case 'SAVE':
+                return self._save_pos(gcmd)
+            case 'SAVED':
+                name = gcmd.get('SAVED')
+                if not name: raise gcmd.error("SAVED= requires a name")
+                loc = self.saved.get(name, None)
+                if loc is None:
+                    raise gcmd.error(f"Unknown SAVED='{name}'. Known: {list(self.saved.keys())}")
+                return self._goto(loc, gcmd.get_float('SPEED', None))
+            case 'FIDUCIAL':
+                fid_name, params = self.lookup_fiducial(gcmd.get('FIDUCIAL', None))
+                if fid_name is None:
+                    raise gcmd.error("Unknown fiducial '%s'" % (gcmd.get('FIDUCIAL', None),))
+                return self._goto(params, gcmd.get_float('SPEED', None))
+            case 'CAM':
+                cam = self.vision.lookup_cam(gcmd.get('CAM'),True)
+                pos = self.get_position()
+                if getattr(cam, 'camera_xy', None) is not None:
+                    loc = {'x': cam.camera_xy[0], 'y': cam.camera_xy[1],
+                           'z': gcmd.get_float('Z', getattr(cam, 'def_z_plane', pos[2]))}
+                    return self._goto(loc, gcmd.get_float('SPEED', None))
+                raise gcmd.error("camera_xy is not set on '%s'" % (cam.name,))
+            case 'DISCARD':
+                return self._goto(self.discard_location, gcmd.get_float('SPEED', None))
+            case 'BOARD': # will have actual boards later
+                return self._goto(self.default_board_location, gcmd.get_float('SPEED', None))
+            case _:
+                raise gcmd.error("Unknown PNP_GOTO target '%s'" % (gparams[0],))
+
     def get_status(self, eventtime):
         z_axis = None if self._active_z[0] is None else "%s%s"%(
             '+' if self._active_z[1] >= 0 else '-', self._active_z[0].get_name())
@@ -419,6 +490,7 @@ class PnPManager:
             'r_axis': None if self._bound_r is None else self._bound_r.name,
             'fiducial_primary': self.fiducial_primary,
             'fiducial_secondary': self.fiducial_secondary,
+            'saved': self.saved,
         }
 
 def load_config(config):
