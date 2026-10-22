@@ -118,10 +118,10 @@ class ConfigWrapper:
         return self.getlists(option, default, seps=(sep,), count=count,
                              parser=float, note_valid=note_valid)
     def getasteval(self, option, default=sentinel, note_valid=True):
-        try: return ast.literal_eval(self.get(option,default))
-        except ValueError as e:
-            raise error("Option '%s' in section '%s' is not a valid literal"
-                        % (option, self.section))
+        def p(section, option):
+            return ast.literal_eval(self.fileconfig.get(section, option))
+        return self._get_wrapper(p, option, default,
+                                 note_valid=note_valid)
     def getsection(self, section):
         return ConfigWrapper(self.printer, self.fileconfig,
                              self.access_tracking, section)
