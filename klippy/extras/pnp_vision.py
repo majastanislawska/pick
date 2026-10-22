@@ -98,7 +98,9 @@ class PnPVision:
         cam=self.cams[key]
         if up is None:           return cam
         elif up==cam.looking_up: return cam
-        else: raise self.printer.command_error(f"Can't use'{cam_name}' here. Camera needs to be looking {["down","up"][up]}")
+        else: 
+            up_str="up" if up is True else "down"
+            raise self.printer.command_error(f"Can't use'{cam_name}' here. Camera needs to be looking {up_str}")
 
     def other_cameras(self,me):
         return [c for c in self.cams.values() if c is not me]
