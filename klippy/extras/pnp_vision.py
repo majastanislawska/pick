@@ -98,7 +98,7 @@ class PnPVision:
         cam=self.cams[key]
         if up is None:           return cam
         elif up==cam.looking_up: return cam
-        else: 
+        else:
             up_str="up" if up is True else "down"
             raise self.printer.command_error(f"Can't use'{cam_name}' here. Camera needs to be looking {up_str}")
 
