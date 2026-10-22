@@ -20,8 +20,14 @@ more to come.
 Pick can now see stuff.
 
 Vision Pipelines can be created and modified using gcode command and executed to snap photo and detect objects.
-specialised camera module can take any VL4 camera, apply undistortiion, provide frames bot to vision pipleines and to MJPG server where it can be viewed bby operator, that supports HUD display and overlays.
+specialized camera module can take any VL4 camera, apply undistortion, provide frames both to vision pipleines and to MJPEG server where it can be viewed by operator, that supports HUD display and overlays.
 see [PnP Vision](docs/PnP_Vision.md) for details.
+
+## Calibration
+
+You can now calibrate whole machine from scratch, including cameras, using several commands on text console and a text editor to edit your config files
+
+see [PnP Calibration](docs/PNP_Calibration.md) for details.
 
 ## Kinematics
 
@@ -32,8 +38,9 @@ see [PnP_Move_Transform.md](docs/PnP_Move_Transform.md) for details.
 
 ## OpenPNP compatibility
 
-If you want to use Pickk with OpenPNP don't use above feature as it's incompatible with OpenPNP.
-Configure rotary axes for Pick and Place toolhead using `MANUAL_STEPPER' command it's good to put it in a "startup macro" like this
+If you want to use Pick with OpenPNP don't use above feature as it's incompatible with OpenPNP.
+Configure rotary axes for Pick and Place toolhead using `MANUAL_STEPPER' command.
+It's good to put it in a "startup macro" like this
 
 ```text
 [delayed_gcode init_axes]
@@ -64,9 +71,12 @@ rotation_distance: 360
 
 ## Camera Support
 
-Ustreamer module allows to spawn ustreamer for as many cameras as you need and provide some control of it's controls. Those can be received by OpenPNP's MJPGCaptureCamera.
-Intent is to allow Pick to sit on RaspberryPi mounted on machine and operate OpenPNp from desktop
-this is Linux specitic module, uses V4L.
+`camera_v4l` is main vision engine for Pick, it should work with any camera supported by Linux V4L stack. it provides snapshots for vision engine as well as own MJPEG streaming server that provides undistorted view along with other features like overlay where results of detection pipelines can be displayed.
+you can use this camera from your web browser.
+
+`camera_ustreamer` module allows to spawn ustreamer for as many cameras as you need and provide some control of it's controls. Those can be received by OpenPNP's MJPGCaptureCamera.
+Intent is to allow Pick to sit on RaspberryPi mounted on machine and operate OpenPNP from desktop
+this is Linux specific module, uses V4L.
 
 ## Central Endstop
 

@@ -5291,7 +5291,7 @@ and from there to own micro http server, from where camera feed can be viewed by
 Besides undistorting (when camera matrices are provided) it can show overlays and
 some HUD display (currently fps and target in optical center)
 
-this module uses same code (and config) for camera controls (brightnes, exposure etc) as  `camera_ustreamer`, see there foor info.
+this module uses same code (and config) for camera controls (brightnes, exposure etc) as  `camera_ustreamer`, see there for info.
 
 Calibration matrices are same as Advanced Calibration in OpenPNP,
 except for `virtual_camera_matrix` see [CAM_CALIB](G-Codes.md#CAM_CALIB) for more info.
@@ -5310,7 +5310,7 @@ resolution: 1600x1200
 brightness: -64
 gain: 8
 #[..]
-# Calibration matrices (same as Advanced Calibration in OpenPNP)
+# Calibration matrices
 camera_matrix: [[1572.0669481517632, 0.0, 799.5],
                 [0.0, 1566.4019983540866, 599.5],
                 [0.0, 0.0, 1.0]]

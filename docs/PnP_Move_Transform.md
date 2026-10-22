@@ -8,7 +8,7 @@ Framework creates and maintains consistent Cartesian `XYZR` "gcode space" for ti
 (tool offsets, Z-axis tilt, camera optical-axis tilt, and tooltip runout).
 It also hides all "technical details" like which manual_stepper rotates which tool - you always operate with `G1R<angle>`, while remembering rotation for time given tool is unselected. Tool Z axis position is retracted to "safe position" of 0 on toolchange though.
 
-When selected tool is camera it swallows all moves on `Z` and `R` (machine doesnt move, besides XY moves to compensate misalignments) and uses them for own purposes: `Z` is used as reference plane for px to mm calculations, and `R` is displayed on HUD. However those coordinates are still returned in `get_position()` so during switchinng to different tool, that tool can land exactly where camera was looking (`PNP_TOOL ... MOVE=1`).
+When selected tool is camera it swallows all moves on `Z` and `R` (machine doesn't move, besides XY moves to compensate misalignments) and uses them for own purposes: `Z` is used as reference plane for px to mm calculations, and `R` is displayed on HUD. However those coordinates are still returned in `get_position()` so during switching to different tool, that tool can land exactly where camera was looking (`PNP_TOOL ... MOVE=1`).
 
 See also [G-Codes](G-Codes.md#pnp) for a command reference
 and [Config Reference](Config_Reference.md#pnp) for configuration options.
@@ -24,7 +24,7 @@ There is no really need for toolpath as Pick and Place machines operate on point
 - Therefore **Nozzle Z is actuator stroke from park**, not Cartesian tip height above the board. `G1 Z-10` is 10 mm of extension of the **active** tool, regardless of tip length. Thankfully tips are typically same lengths and any imbalance between tools on Perter's Head can by accommodated by moving endstop position. See [Calibration](PnP_Calibration.md).
 - There are `z_offset` config options on `[pnp_tool]` and `[pnp_tooltip]` but they are not currently used.
 - `G0` and `G1` still do same thing (as klipper does), but eventually `G0` will be "safe *travel* move" (with retract to z=0 before any XY move and then z dwell do destination), while `G1` will remain "freestyle" *work* move i.ex. for sneaking up towards toolchanger.
-- some caution is required when using `PNP_TOOL SET=` with `MOVE=1` and when swapping tools back and forth with and without `MOVE=1`. `MOVE=1` moves toolhead to last gcode pos (which will be diffent machine pos due to new offsets/transforms), while without updates gcode posistion to what new offsets and transforms compute from last machine pos.
+- some caution is required when using `PNP_TOOL SET=` with `MOVE=1` and when swapping tools back and forth with and without `MOVE=1`. `MOVE=1` moves toolhead to last gcode pos (which will be different machine pos due to new offsets/transforms), while without updates gcode position to what new offsets and transforms compute from last machine pos.
 
 ## Overview
 
@@ -62,14 +62,14 @@ tool: right
 ```
 
 `name` is to be referenced in gcode command `PNP_TIP LOAD=[name]` can be same for all tips of same type to ease use from operator's perspective, while separate sections can hold specific data like toolchanger position or sequence.
-tooltip holds data about its own runout that is 'last stage' of transform, however it's not intended to be stored permanenetly in config only calibrated on (first) load.
+tooltip holds data about its own runout that is 'last stage' of transform, however it's not intended to be stored permanently in config only calibrated on (first) load.
 
 ## Kinematic chain
 
 G-code is a **Cartesian world / machine frame**: XY about 0…500 mm, nozzle Z typically −15…−5 mm of work with **Z=0 = safe / park**. The host maps that frame through machine gantry XY (plus the visual-home offset) onto the **active tool**:
 
 - a **down-looking camera**, whose optical axis may be slightly tilted (`axis_vector` / rotation matrix from calibration), or
-- a **nozzle** that travels “vertically” on the seesaw but may also be slightly tilted - also `axis_vector`, and whose rotating tip may have runout. No nozzle or nozzletip specific `z_offset`s at this point.
+- a **nozzle** that travels “vertically” on the seesaw but may also be slightly tilted - also `axis_vector`, and whose rotating tip may have runout. No nozzle or nozzle tip specific `z_offset`s at this point.
 
 The transform absorbs those errors so that:
 
