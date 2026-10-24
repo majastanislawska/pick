@@ -160,6 +160,11 @@ class GCodeDispatch:
                 "mux command %s %s %s may have only one key (%s)" % (
                     cmd, key, value, prev_key))
         if value in prev_values:
+            if func is None:
+                logging.info("unregistering mux command %s %s %s (%s)" % (
+                    cmd, key, value, prev_values))
+                del(prev_values[value])
+                return
             raise self.printer.config_error(
                 "mux command %s %s %s already registered (%s)" % (
                     cmd, key, value, prev_values))
