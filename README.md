@@ -4,14 +4,17 @@ Pick (&#x1D745;&#x1D450;&#x1D458;) is a spinoff of [Klipper](https://www.klipper
 
 That is:
 
-* support for extra axes (working M114)
-* camera support
+* Geometric transformations to accommodate tool offsets and compensate for machine misalignments, and easy context switching between tools and (top)camera. (`move_transform`)
+* camera support and Vision
+* configurable vision pipelines
 * USB Power Delivery (CH224Q configurable over i2c) for a slim toolhead board
 * central endstop
-* support for pumps, valves, and pressure sensors, not just by reusing features related to hotend/hotbed temperature (todo)
+* support for pumps, valves, and pressure sensors, not just by reusing features related to hotend/hotbed temperature
 * feeders control (servo for now)
 
 more to come.
+
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/majastanislawska/pick)
 
 # Features
 
@@ -23,6 +26,15 @@ Vision Pipelines can be created and modified using gcode command and executed to
 specialized camera module can take any VL4 camera, apply undistortion, provide frames both to vision pipleines and to MJPEG server where it can be viewed by operator, that supports HUD display and overlays.
 see [PnP Vision](docs/PnP_Vision.md) for details.
 
+## Camera Support
+
+`camera_v4l` is main vision engine for Pick, it should work with any camera supported by Linux V4L stack. it provides snapshots for vision engine as well as own MJPEG streaming server that provides undistorted view along with other features like overlay where results of detection pipelines can be displayed.
+you can use this camera from your web browser.
+
+`camera_ustreamer` module allows to spawn ustreamer for as many cameras as you need and provide some control of it's controls. Those can be received by OpenPNP's MJPGCaptureCamera.
+Intent is to allow Pick to sit on RaspberryPi mounted on machine and operate OpenPNP from desktop. This module is intended for legacy setup with OpenPNP, which does it's own camera calibration.
+this is Linux specific module, uses V4L.
+
 ## Calibration
 
 You can now calibrate whole machine from scratch, including cameras, using several commands on text console and a text editor to edit your config files
@@ -31,52 +43,10 @@ see [PnP Calibration](docs/PNP_Calibration.md) for details.
 
 ## Kinematics
 
-Framework that maintains consistent Cartesian `XYZR` "gcode space" for tip of currently selected tool with currently loaded tooltip (or camera principal point) and adjusts machine coordinates to compensate for all known offsets and misalignments (tool offsets, Z-axis tilt, camera optical-axis tilt, and tooltip runout) has been implemented using Klipper's `move_transform`.
+Framework that maintains consistent Cartesian `XYZR` "gcode space" for tip of currently selected tool with currently loaded tooltip (or camera principal point) and adjusts machine coordinates to compensate for all known offsets and misalignments (tool offsets, Z-axis tilt, camera optical-axis tilt, and tooltip runout) has been implemented using Klipper's `move_transform`. `PnPManager` (in `pnp.py`) installs itself as that transform and redispatches each move/position query to the currently active tool. Unlike a static bed-tilt/mesh correction, this transform mutates to accommodate for currently selected `active tool` at runtime (`PNP_TOOL SET=[name]`).
 it also provides way to switch between tools and camera.
 
 see [PnP_Move_Transform.md](docs/PnP_Move_Transform.md) for details.
-
-## OpenPNP compatibility
-
-If you want to use Pick with OpenPNP don't use above feature as it's incompatible with OpenPNP.
-Configure rotary axes for Pick and Place toolhead using `MANUAL_STEPPER' command.
-It's good to put it in a "startup macro" like this
-
-```text
-[delayed_gcode init_axes]
-initial_duration: 0.1
-gcode:
-    MANUAL_STEPPER STEPPER=stepper_a GCODE_AXIS=A LIMIT_VELOCITY=5000 LIMIT_ACCEL=3000
-    MANUAL_STEPPER STEPPER=stepper_b GCODE_AXIS=B LIMIT_VELOCITY=5000 LIMIT_ACCEL=3000
-    RESPOND PREFIX='info' MSG='initializing A and B axes: {printer.toolhead.position}'
-```
-
-Of course steppers need to be defined in configuration file, like this:
-
-```text
-[manual_stepper stepper_a]
-step_pin: toolhead:A_STEP
-dir_pin: !toolhead:A_DIR
-enable_pin: !toolhead:A_EN
-#endstop_pin: ^toolhead:A_STOP
-microsteps: 16
-full_steps_per_rotation: 200
-rotation_distance: 360
-# position_min:-360
-# position_endstop: 0
-# position_max: 360
-```
-
-(this setup treats degrees like millimeters, speeds and accelerations need to be adjusted to match motor.)
-
-## Camera Support
-
-`camera_v4l` is main vision engine for Pick, it should work with any camera supported by Linux V4L stack. it provides snapshots for vision engine as well as own MJPEG streaming server that provides undistorted view along with other features like overlay where results of detection pipelines can be displayed.
-you can use this camera from your web browser.
-
-`camera_ustreamer` module allows to spawn ustreamer for as many cameras as you need and provide some control of it's controls. Those can be received by OpenPNP's MJPGCaptureCamera.
-Intent is to allow Pick to sit on RaspberryPi mounted on machine and operate OpenPNP from desktop
-this is Linux specific module, uses V4L.
 
 ## Central Endstop
 
@@ -92,20 +62,10 @@ only implemented for CoreXY kinematics for now, (ask if you need others)
 Intended for a slim toolhead mcu board with only one cable going to it (and vacuum pipe). 20V@3A is well enough to drive motors of 2 rotary axes, z axis, and some auxiliary functions. Nema8 are rated at 0.5A.
 currently only CH224Q configurable over i2c controller is supported
 
-Module provides 3 gcode commands:
+Module provides gcode commands to quuery for stattus and to enable extra power when it's actually needed (i.ex. go down to 5V in idle shutdown macro).
+See [commands reference](docs/G-Codes.md#ch224q_pd).
 
-* `PD_CAPS` Dumps PD Source Capabilities: available power profiles (PDOs)
-* `PD_SET VOLTAGE=<value>` Request voltage fromm supply (charger)
-* `PD_GET` Returns status as a single line of space separated key:value format that can be parsed
-
-This layout allows flexibility to enable extra power when it's actually needed (use macros).\
 There can be many instances of this chip configured. I2C address in not configurable so there can be one per i2c bus, but one per controller board is only thing that makes sense, therefore name config section same as relevant mcu and use `MCU=<name>` param do differentiate between them.
-
-```text
-[ch224q_pd toolhead]
-i2c_mcu: toolhead
-i2c_bus: i2c1e
-```
 
 ## Pneumatics
 
@@ -129,21 +89,6 @@ Pump object can be set to maintain pressure in a system, similar to what heater 
 Currently only BanBang algorithm is implemented.
 `cycle_time` is hardcoded to `report_interval` of sensor.
 Only command for now is `SET_PUMP_PRESSURE PUMP=<name> TARGET=<value>`
-config looks like this:
-
-```text
-[pressure_pump pump]
-gcode_id: PUMP
-pump_pin: PUMP_pin
-hardware_pwm: False
-max_power: 1
-control:watermark
-#sensor config part
-sensor_type: XGZP6859A100KPGPN33
-sensor_pin: gpio29
-adc_voltage: 3.3
-offset: -2
-```
 
 ### Valve
 
@@ -152,32 +97,11 @@ Valve is rather simple object that (for now) operates like a binary `output_pin`
 There's command to open/close valve: `VALVE_SET VALVE=<gcode_id> VALUE=[0|1|ON|OFF|OPEN|CLOSE]`
 and to read its status and value of attached sensor: `VALVE_GET VALVE=<gcode_id>`, response looks like this: `<gcode_id>:<value(%.2f)> OPEN|CLOSED`
 
-Config looks like this:
-
-```text
-[pressure_valve LEFT]
-pin: toolhead:VALVE1
-hardware_pwm: True
-max_power: 1.0
-hold_value: 0.75
-kick_start_time: 0.2
-#optional sensor
-sensor_type: WF100DPZ1BGS6DT
-i2c_mcu: toolhead
-i2c_bus: i2c0e
-# sleep_time: 0.1250s
-offset: 0.4
-```
-
 ## Webhooks
 
 ### gcode/session
 
-This endpoint just like `gcode/script` allows one to run a series
-of G-Code commands.
-
-However, unlike like `gcode/script` if the G-Code command produces
-terminal output, that output is provided in the response.
+This endpoint just like `gcode/script` allows one to run a series of G-Code commands.However, unlike like `gcode/script` if the G-Code command produces terminal output, that output is provided in the response.
 
 For example: `{"id": 123, "method": "gcode/session", "params": {"command": "M114"}}` might return `{"id":123,"result":{'output': ['X:0.000 Y:0.000 Z:0.000 E:0.000 A:0.000 B:0.000', 'ok']}}`
 
@@ -186,8 +110,30 @@ just parse output like it would came from terminal.
 
 Same considerations regarding queuing and delay as for `gcode/script` apply.
 
+### pnp related
+
+Those webhooks are intended for desktop gui app (see wxPick). More to come.
+
+* `pnp/jog` in `pnp` for jogging around (instead of `G91;G1;G90` sequence)
+* `pnp/move` in `pnp` for absolute coordinates move (mostly used to move `Z` and `R` to `0`)
+* `pnp/tool` in `pnp` to switch `active tool` (equivalent of `PNP_TOOL SET=[name]`)
+* `pnp/light` in `pnp_vision` to manually control camera lights
+* `pnp/px2mach` in `pnp_vision` to query for translation of pixel coordinates to machinepos delta (for jogging)
+
 ## Miscellaneous
 
 * Overall brightness of Neopixel strip is configurable.
+* klipper's `API server` can now bind to *tcp socket* too (`-a tcp://host:port` commandline parameter). so GUI app can be on desktop and you don't need stuff like Moonraker, Fluidd or Mainsail.
 * Errors in gcode responses are more pronounced and easier to parse:
 `Error:` instead of `!!`
+
+## legacy OpenPNP compatibility
+
+If you want to use Pick with OpenPNP don't use `PnP_Move_Transform` feature as it's incompatible with OpenPNP. Instead:
+
+* Configure rotary axes for Pick and Place toolhead using `MANUAL_STEPPER` command.
+* Use `camera_ustreamer` module for cameras.
+* Use "standalone" pressure sensors. (you may need to use regexp in openpnp to strip minus sign from pressure values.)
+* you can use ordinary `[output_pin]` for valves and pump
+
+see [example config](config/openpnp.cfg)
